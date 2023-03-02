@@ -16,20 +16,19 @@ import pandas as pd
 import tensorflow_datasets as tfds
 import tensorflow_model_optimization as tfmot
 
-from .tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModelTransformer
+from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModelTransformer
 
-
-def process_image(data):
-    data['image'] = (tf.image.resize(data['image'], (224, 224)) * 2.0 / 255.0) - 1.0
-    return data
+import tiny_imagenet_dataset
 
 
 def run():
-    model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3))
+    model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(32, 32, 3))
 
     print(model.summary())
 
-    model_transformer = PerLayerQuantizeModelTransformer(model)
+    model_transformer = PerLayerQuantizeModelTransformer(model, {})
+    layers = model_transformer.get_number_of_quantizable_layers()
+    print("Počet quantizovatelných vrstev: " + str(layers))
 
 
 if __name__ == "__main__":

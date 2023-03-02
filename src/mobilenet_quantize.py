@@ -15,19 +15,13 @@ import os
 import pandas as pd
 import tensorflow_datasets as tfds
 import tensorflow_model_optimization as tfmot
-from quantization_search.tf_quantization.transforms.quantize_model import quantize_model
 
-
-# %%
-
-def process_image(data):
-    data['image'] = (tf.image.resize(data['image'], (224, 224)) * 2.0 / 255.0) - 1.0
-    return data
-
+from tf_quantization.transforms.quantize_model import quantize_model
+import imagenet_mini
 
 # %%
 
-model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3))
+model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3), alpha=0.25)
 
 # %%
 
@@ -35,21 +29,21 @@ model.summary()
 
 # %%
 
-model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.001),
+model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.01),
               loss=tf.keras.losses.SparseCategoricalCrossentropy(),
               metrics=['accuracy'])
 
 # %%
 
-tr_ds = tfds.load('imagenet_v2', split='test[:90%]')
-tr_ds = tr_ds.map(process_image)
+tr_ds = imagenet_mini.get_imagenet_mini_dataset(split="train")
+tr_ds = tr_ds.map(imagenet_mini.get_preprocess_image_fn(image_size=(224, 224)))
 
 train_ds = tr_ds \
     .map(lambda data: (data['image'], data['label'])) \
-    .batch(32)
+    .batch(128)
 
-ds = tfds.load('imagenet_v2', split='test[90%:]')
-ds = ds.map(process_image)
+ds = imagenet_mini.get_imagenet_mini_dataset(split="val")
+ds = ds.map(imagenet_mini.get_preprocess_image_fn(image_size=(224, 224)))
 
 test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(64)
 
@@ -61,11 +55,27 @@ print(f'Top-1 accuracy (float): {acc * 100:.2f}%')
 # %%
 print("Quantize model")
 
-# q_aware stands for for quantization aware.
-q_aware_model = quantize_model(model, [])
+bit_8_conf = {"weight_bits": 8, "activation_bits": 8}
+bit_7_conf = {"weight_bits": 7, "activation_bits": 8}
+bit_6_conf = {"weight_bits": 6, "activation_bits": 8}
+bit_5_conf = {"weight_bits": 5, "activation_bits": 8}
+bit_4_conf = {"weight_bits": 4, "activation_bits": 8}
+bit_3_conf = {"weight_bits": 3, "activation_bits": 8}
+bit_2_conf = {"weight_bits": 2, "activation_bits": 8}
+
+q_aware_model = quantize_model(model, [
+    bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
+    bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
+    bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
+    bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
+    bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
+    bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
+    bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
+    bit_8_conf, bit_8_conf
+])
 
 # `quantize_model` requires a recompile.
-q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.001),
+q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.01),
                       loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                       metrics=['accuracy'])
 
@@ -73,9 +83,27 @@ q_aware_model.summary()
 
 # %%
 
-q_aware_model.fit(train_ds, epochs=3, validation_data=test_ds)
+qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
+print(f'Top-1 accuracy before QAT (quantized float): {qa_acc * 100:.2f}%')
+
+# %%
+
+checkpoint_filepath = 'checkpoints/weights-{epoch:03d}-{val_accuracy:.4f}.hdf5'
+model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+    filepath=checkpoint_filepath,
+    save_weights_only=True,
+    monitor='val_accuracy',
+    mode="max"
+)
+
+# Train for 5 epochs
+q_aware_model.fit(train_ds, epochs=5, validation_data=test_ds, callbacks=[model_checkpoint_callback], initial_epoch=0)
 
 # %%
 
 qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
-print(f'Top-1 accuracy (quantize aware float): {qa_acc * 100:.2f}%')
+print(f'Top-1 accuracy after (quantize aware float): {qa_acc * 100:.2f}%')
+
+# %%
+# Save model?
+q_aware_model.save("mobilenet_quant.keras")

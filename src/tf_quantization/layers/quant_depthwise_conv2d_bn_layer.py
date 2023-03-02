@@ -16,14 +16,29 @@ from tensorflow_model_optimization.python.core.quantization.keras.experimental.d
     default_n_bit_quantizers
 
 
-class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D, keras.layers.BatchNormalization):
+class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
 
     def __init__(self, dephwise_conv_layer: keras.layers.DepthwiseConv2D, bn_layer: keras.layers.BatchNormalization,
                  quantize=True, **kwargs):
-        keras.layers.DepthwiseConv2D.__init__(self, **dephwise_conv_layer.get_config())
-        keras.layers.BatchNormalization.__init__(self, **bn_layer.get_config())
+        super().__init__(**dephwise_conv_layer.get_config())
+
         self._dephwise_conv_layer = dephwise_conv_layer
         self._bn_layer = bn_layer
+
+        # Batch Normalization
+        self.axis = self._bn_layer.axis
+        self.momentum = self._bn_layer.momentum
+        self.epsilon = self._bn_layer.epsilon
+        self.center = self._bn_layer.center
+        self.scale = self._bn_layer.scale
+        self.beta_initializer = self._bn_layer.beta_initializer
+        self.gamma_initializer = self._bn_layer.gamma_initializer
+        self.moving_mean_initializer = self._bn_layer.moving_mean_initializer
+        self.moving_variance_initializer = self._bn_layer.moving_variance_initializer
+        self.beta_regularizer = self._bn_layer.beta_regularizer
+        self.gamma_regularizer = self._bn_layer.gamma_regularizer
+        self.beta_constraint = self._bn_layer.beta_constraint
+        self.gamma_constraint = self._bn_layer.gamma_constraint
 
         # TODO: This copy only structure, not weights
         # TODO: Copy weights
@@ -37,9 +52,92 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D, 
 
     def build(self, input_shape):
         keras.layers.DepthwiseConv2D.build(self, input_shape)
-        keras.layers.BatchNormalization.build(self, input_shape)
 
-        self.weights_quantizer.build(input_shape, "weights", self)
+        self.axis = tf_utils.validate_axis(self.axis, input_shape)
+        conv_output_shape = self.compute_output_shape(input_shape)
+
+        axis_to_dim = {x: conv_output_shape.dims[x].value for x in self.axis}
+        for x in axis_to_dim:
+            if axis_to_dim[x] is None:
+                raise ValueError(
+                    "Input has undefined `axis` dimension. Received input "
+                    f"with shape {tuple(conv_output_shape)} "
+                    f"and axis={tuple(self.axis)}"
+                )
+
+        if len(axis_to_dim) == 1:
+            # Single axis batch norm (most common/default use-case)
+            param_shape = (list(axis_to_dim.values())[0],)
+        else:
+            # Parameter shape is the original shape but with 1 in all non-axis
+            # dims
+            param_shape = [
+                axis_to_dim[i] if i in axis_to_dim else 1 for i in range(self.conv_output_shape.rank)
+            ]
+        self._param_shape = param_shape
+        if self.scale:
+            self.gamma = self.add_weight(
+                name="gamma",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.gamma_initializer,
+                regularizer=self.gamma_regularizer,
+                constraint=self.gamma_constraint,
+                trainable=True,
+                experimental_autocast=False,
+            )
+        else:
+            self.gamma = None
+
+        if self.center:
+            self.beta = self.add_weight(
+                name="beta",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.beta_initializer,
+                regularizer=self.beta_regularizer,
+                constraint=self.beta_constraint,
+                trainable=True,
+                experimental_autocast=False,
+            )
+        else:
+            self.beta = None
+
+        try:
+            # Disable variable partitioning when creating the moving mean and
+            # variance
+            if hasattr(self, "_scope") and self._scope:
+                partitioner = self._scope.partitioner
+                self._scope.set_partitioner(None)
+            else:
+                partitioner = None
+            self.moving_mean = self.add_weight(
+                name="moving_mean",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.moving_mean_initializer,
+                synchronization=tf.VariableSynchronization.ON_READ,
+                trainable=False,
+                aggregation=tf.VariableAggregation.MEAN,
+                experimental_autocast=False,
+            )
+
+            self.moving_variance = self.add_weight(
+                name="moving_variance",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.moving_variance_initializer,
+                synchronization=tf.VariableSynchronization.ON_READ,
+                trainable=False,
+                aggregation=tf.VariableAggregation.MEAN,
+                experimental_autocast=False,
+            )
+        finally:
+            if partitioner:
+                self._scope.set_partitioner(partitioner)
+
+        if self.weights_quantizer is not None:
+            self.weights_quantizer.build(input_shape, "weights", self)
 
         # Copy weights from original convolution and batch norm layer
         conv_weights = self._dephwise_conv_layer.get_weights()
@@ -65,7 +163,7 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D, 
         else:
             bias = self.bias
         return tf.nn.bias_add(
-            outputs, bias, data_format=self.data_format
+            outputs, bias, data_format=self._tf_data_format
         )
 
     def call(self, inputs, training=None, **kwargs):
@@ -109,7 +207,7 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D, 
         )
         if self.use_bias:
             conv_out = backend.bias_add(
-                conv_out, self.bias, data_format=self.data_format
+                conv_out, self.bias, data_format=self._tf_data_format
             )
 
         bn_input_shape = conv_out.shape
@@ -168,3 +266,42 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D, 
         return outputs
 
     # TODO: get_config(), set_config()
+
+    def _assign_moving_average(self, variable, value, momentum, inputs_size):
+        def calculate_update_delta():
+            decay = tf.convert_to_tensor(1.0 - momentum, name="decay")
+            if decay.dtype != variable.dtype.base_dtype:
+                decay = tf.cast(decay, variable.dtype.base_dtype)
+            update_delta = (variable - tf.cast(value, variable.dtype)) * decay
+            if inputs_size is not None:
+                update_delta = tf.where(
+                    inputs_size > 0,
+                    update_delta,
+                    backend.zeros_like(update_delta),
+                )
+            return update_delta
+
+        with backend.name_scope("AssignMovingAvg") as scope:
+            if tf.compat.v1.executing_eagerly_outside_functions():
+                return variable.assign_sub(calculate_update_delta(), name=scope)
+            else:
+                with tf.compat.v1.colocate_with(variable):
+                    return tf.compat.v1.assign_sub(
+                        variable, calculate_update_delta(), name=scope
+                    )
+
+    def _assign_new_value(self, variable, value):
+        with backend.name_scope("AssignNewValue") as scope:
+            if tf.compat.v1.executing_eagerly_outside_functions():
+                return variable.assign(value, name=scope)
+            else:
+                with tf.compat.v1.colocate_with(variable):
+                    return tf.compat.v1.assign(variable, value, name=scope)
+
+    @property
+    def _param_dtype(self):
+        # Raise parameters of fp16 batch norm to fp32
+        if self.dtype == tf.float16 or self.dtype == tf.bfloat16:
+            return tf.float32
+        else:
+            return self.dtype or tf.float32

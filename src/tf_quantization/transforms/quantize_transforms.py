@@ -5,7 +5,7 @@ from tensorflow_model_optimization.python.core.quantization.keras import quantiz
 from tensorflow_model_optimization.python.core.quantization.keras.experimental.default_n_bit import \
     default_n_bit_transforms, default_n_bit_quantize_layout_transform
 
-from quantization_search.tf_quantization.transforms import custom_n_bit_quantize_layout_transform
+from tf_quantization.transforms import custom_n_bit_quantize_layout_transform
 
 
 class PerLayerQuantizeLayoutTransform(
@@ -15,14 +15,14 @@ class PerLayerQuantizeLayoutTransform(
         self._quantize_config = quantize_config
 
     def apply(self, model, layer_quantize_map):
-        return PerLayerQuantizeModelTransformer(model, self._quantize_config).transform()
+        return PerLayerQuantizeModelTransformer(model, self._quantize_config, layer_quantize_map).transform()
 
 
 class PerLayerQuantizeModelTransformer:
     _layers_groups = []
     _layers_group_index_map = {}
 
-    def __init__(self, model, quantize_config):
+    def __init__(self, model, quantize_config, layer_quantize_map):
         # Taken from https://github.com/tensorflow/model-optimization
         if not self._is_sequential_or_functional_model(model):
             raise ValueError(
@@ -30,9 +30,8 @@ class PerLayerQuantizeModelTransformer:
 
         self.model = model
         self._quantize_config = quantize_config
+        self._layer_quantize_map = layer_quantize_map
         self._do_quantization_split()
-
-        print(self._layers_groups)
 
     @staticmethod
     def _is_sequential_or_functional_model(model):
@@ -225,7 +224,7 @@ class PerLayerQuantizeModelTransformer:
 
     def transform(self):
         transformed_model = self.model
-        layer_quantize_map = {}
+        layer_quantize_map = self._layer_quantize_map
 
         for i, group in enumerate(self._layers_groups):
             quantize_transform = custom_n_bit_quantize_layout_transform.CustomNBitQuantizeLayoutTransform(
