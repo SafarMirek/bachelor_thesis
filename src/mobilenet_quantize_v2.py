@@ -10,16 +10,27 @@ import imagenet_mini
 import os
 import numpy as np
 
+tf.random.set_seed(30082000)  # Set random seed to have reproducible results
+
+# Script arguments
 parser = argparse.ArgumentParser(
     prog='mobilenet_quantize',
     description='Quantize mobilenet',
     epilog='')
 
-parser.add_argument('-e', '--epochs', default=100, type=int)
-
+parser.add_argument('-e', '--epochs', default=50, type=int)
 parser.add_argument('-b', '--batch-size', default=256, type=int)
 
-parser.add_argument('-v', '--verbose', action='store_true')  # on/off flag
+parser.add_argument('--wb', '--weight_bits', default=8, type=int)
+
+parser.add_argument('--lr', '--learning-rate', default=0.001, type=float)
+parser.add_argument('--warmup', default=0.0, type=float)
+
+parser.add_argument("--logs-dir", default="logs/fit/")
+parser.add_argument("--checkpoints-dir", default="checkpoints/")
+
+parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
+parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
 
 
 def lr_warmup_cosine_decay(global_step,
@@ -80,7 +91,23 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
 
 def main():
     args = parser.parse_args()
-    print(f'Batch Size: {args.batch_size}')
+    if args.verbose:
+        print("Used configuration:")
+        print(f'Number of epochs: {args.epochs}')
+        print(f'Batch Size: {args.batch_size}')
+        print(f'Weights bits: {args.weight_bits}')
+        print(f'Learning rate: {args.learning_rate}')
+        print(f'Warmup: {args.warmup}')
+        print(f'Checkpoints directory: {args.checkpoints_dir}')
+        print(f'Logs directory: {args.logs_dir}')
+        print(f'Cache training dataset: {args.cache}')
+
+    if args.weight_bits < 2 or args.weight_bits > 8:
+        raise ValueError("Weight bits must be in <2,8> interval.")
+
+    if args.warmup < 0 or args.weight_bits > 1:
+        raise ValueError("Warmup % must be in <0,1> interval.")
+
     model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3), alpha=0.25)
 
     if args.verbose:
@@ -91,46 +118,37 @@ def main():
     tr_ds = imagenet_mini.get_imagenet_mini_dataset(split="train")
     tr_ds = tr_ds.map(imagenet_mini.get_preprocess_image_fn(image_size=(224, 224)))
 
-    train_ds = tr_ds \
-        .map(lambda data: (data['image'], data['label'])) \
-        .batch(args.batch_size)
+    if args.cache:
+        tr_ds = tr_ds.cache()
+
+    train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
+
+    train_ds = train_ds.shuffle(10000).batch(args.batch_size)
 
     ds = imagenet_mini.get_imagenet_mini_dataset(split="val")
     ds = ds.map(imagenet_mini.get_preprocess_image_fn(image_size=(224, 224)))
+
+    if args.cache:
+        ds = ds.cache()
 
     test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(args.batch_size)
 
     if args.verbose:
         print("Quantize model")
 
-    bit_8_conf = {"weight_bits": 8, "activation_bits": 8}
-    bit_7_conf = {"weight_bits": 7, "activation_bits": 8}
-    bit_6_conf = {"weight_bits": 6, "activation_bits": 8}
-    bit_5_conf = {"weight_bits": 5, "activation_bits": 8}
-    bit_4_conf = {"weight_bits": 4, "activation_bits": 8}
-    bit_3_conf = {"weight_bits": 3, "activation_bits": 8}
-    bit_2_conf = {"weight_bits": 2, "activation_bits": 8}
+    quant_layer_conf = {"weight_bits": args.weight_bits, "activation_bits": 8}
 
-    q_aware_model = quantize_model(model, [
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf
-    ])
+    q_aware_model = quantize_model(model, [quant_layer_conf for i in range(37)])
 
     q_aware_model.summary()
 
     total_steps = len(train_ds) * args.epochs
     # 10% of the steps
-    warmup_steps = int(0.1 * total_steps)
+    warmup_steps = int(args.warmup * total_steps)  # do not use warmup, only cosine decay
 
-    schedule = WarmUpCosineDecay(target_lr=0.001, warmup_steps=warmup_steps, total_steps=total_steps, hold=warmup_steps)
+    schedule = WarmUpCosineDecay(target_lr=args.learning_rate, warmup_steps=warmup_steps, total_steps=total_steps,
+                                 hold=warmup_steps)
 
-    # `quantize_model` requires a recompile.
     q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=schedule),
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
@@ -138,8 +156,10 @@ def main():
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     print(f'Top-1 accuracy before QAT (quantized float): {qa_acc * 100:.2f}%')
 
-    checkpoints_dir = "checkpoints/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-    os.system(f'mkdir -p {checkpoints_dir}')
+    # Define checkpoint callback for saving model weights after each epoch
+    checkpoints_dir = os.path.abspath(args.checkpoints_dir)
+    checkpoints_dir = os.path.join(checkpoints_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    os.mkdir(checkpoints_dir)
 
     checkpoint_filepath = checkpoints_dir + '/weights-{epoch:03d}-{val_accuracy:.4f}.hdf5'
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -150,8 +170,9 @@ def main():
     )
 
     # Define the Keras TensorBoard callback.
-    logdir = "logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-    tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
+    logs_dir = os.path.abspath(args.logs_dir)
+    logs_dir = os.path.join(logs_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logs_dir)
 
     # Train
     q_aware_model.fit(train_ds, epochs=args.epochs, validation_data=test_ds,
@@ -160,9 +181,6 @@ def main():
 
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     print(f'Top-1 accuracy after (quantize aware float): {qa_acc * 100:.2f}%')
-
-    # Save model
-    q_aware_model.save("mobilenet_quant.keras")
 
 
 if __name__ == "__main__":

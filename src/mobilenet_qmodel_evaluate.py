@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('-b', '--batch-size', default=256, type=int)
 
+parser.add_argument('--wb', '--weight_bits', default=8, type=int)
+
 parser.add_argument('--from-checkpoint', default=None, type=str)
 
 
@@ -79,7 +81,7 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
 
 def main():
     args = parser.parse_args()
-    print(f'Batch Size: {args.batch_size}')
+    print(f'Batch Size: {args.batch_size}, Weights bits: {args.weight_bits}')
     model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3), alpha=0.25)
 
     # Load testing dataset
@@ -88,24 +90,9 @@ def main():
 
     test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(args.batch_size)
 
-    bit_8_conf = {"weight_bits": 8, "activation_bits": 8}
-    bit_7_conf = {"weight_bits": 7, "activation_bits": 8}
-    bit_6_conf = {"weight_bits": 6, "activation_bits": 8}
-    bit_5_conf = {"weight_bits": 5, "activation_bits": 8}
-    bit_4_conf = {"weight_bits": 4, "activation_bits": 8}
-    bit_3_conf = {"weight_bits": 3, "activation_bits": 8}
-    bit_2_conf = {"weight_bits": 2, "activation_bits": 8}
+    quant_layer_conf = {"weight_bits": args.weight_bits, "activation_bits": 8}
 
-    q_aware_model = quantize_model(model, [
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf, bit_8_conf,
-        bit_8_conf, bit_8_conf
-    ])
+    q_aware_model = quantize_model(model, [quant_layer_conf for i in range(37)])
 
     q_aware_model.summary()
 
