@@ -5,7 +5,7 @@ import time
 import random
 
 train_path = '/Users/miroslavsafar/kaggle/imagenet-object-localization-challenge/ILSVRC/Data/CLS-LOC/train'
-new_train_path = '/Users/miroslavsafar/kaggle/working/imagenet-subset-100/train'
+new_train_path = '/Users/miroslavsafar/kaggle/working/imagenet-subset-150/train'
 
 os.system(f'rm -rf {new_train_path}')
 os.system(f'mkdir -p {new_train_path}')
@@ -30,7 +30,7 @@ def get_all_files(directory):
 process_start_t = time.time()
 part_start_t = time.time()
 
-number_per_class = 100
+number_per_class = 150
 
 for i, directory in enumerate(dirs):
     directory_path = train_path + '/' + directory

@@ -11,114 +11,69 @@ from keras.utils import conv_utils
 from keras.utils import tf_utils
 from keras.utils import control_flow_util
 from keras.engine.input_spec import InputSpec
+from tensorflow_model_optimization.python.core.quantization.keras import quantizers
 
 from tensorflow_model_optimization.python.core.quantization.keras.experimental.default_n_bit import \
     default_n_bit_quantizers
 
 
-class QuantConv2DBatchLayer(keras.layers.Layer):
+class QuantConv2DBatchLayer(keras.layers.Conv2D):
 
-    def __init__(self, conv_layer: keras.layers.Conv2D, bn_layer: keras.layers.BatchNormalization, quantize=True,
+    def __init__(self, filters, kernel_size, strides, padding, data_format, dilation_rate, groups, use_bias,
+                 kernel_initializer, bias_initializer, kernel_regularizer, bias_regularizer, kernel_constraint,
+                 bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
+                 gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
+                 gamma_regularizer, beta_constraint, gamma_constraint, quantize=True, quantize_num_bits_weight=8,
                  **kwargs):
-        super().__init__()
-        self._conv_layer = conv_layer
-        self._bn_layer = bn_layer
+        super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
+                         data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
+                         kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
+                         kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
+                         kernel_constraint=kernel_constraint,
+                         bias_constraint=bias_constraint, **kwargs)
 
         # TODO: This copy only structure, not weights
         # TODO: Copy weights
         # Convolution params
         # TODO: I currently do not support more that 1 groups
-        self.rank = self._conv_layer.rank
-        self.filters = self._conv_layer.filters
-        self.kernel_size = self._conv_layer.kernel_size
-        self.groups = self._conv_layer.groups
-        self.strides = self._conv_layer.strides
-        self.padding = self._conv_layer.padding
-        self.data_format = self._conv_layer.data_format
-        self.dilation_rate = self._conv_layer.dilation_rate
-        self.use_bias = self._conv_layer.use_bias
-
-        self.kernel_initializer = self._conv_layer.kernel_initializer
-        self.bias_initializer = self._conv_layer.bias_initializer
-        self.kernel_regularizer = self._conv_layer.kernel_regularizer
-        self.bias_regularizer = self._conv_layer.bias_regularizer
-        self.kernel_constraint = self._conv_layer.kernel_constraint
-        self.bias_constraint = self._conv_layer.bias_constraint
-        self.input_spec = self._conv_layer.input_spec
-
-        self._is_causal = self.padding == "causal"
-        self._channels_first = self.data_format == "channels_first"
-        self._tf_data_format = conv_utils.convert_data_format(
-            self.data_format, self.rank + 2
-        )
 
         # BatchNormalization params
-        self.axis = self._bn_layer.axis
-        self.momentum = self._bn_layer.momentum
-        self.epsilon = self._bn_layer.epsilon
-        self.center = self._bn_layer.center
-        self.scale = self._bn_layer.scale
-        self.beta_initializer = self._bn_layer.beta_initializer
-        self.gamma_initializer = self._bn_layer.gamma_initializer
-        self.moving_mean_initializer = self._bn_layer.moving_mean_initializer
-        self.moving_variance_initializer = self._bn_layer.moving_variance_initializer
-        self.beta_regularizer = self._bn_layer.beta_regularizer
-        self.gamma_regularizer = self._bn_layer.gamma_regularizer
-        self.beta_constraint = self._bn_layer.beta_constraint
-        self.gamma_constraint = self._bn_layer.gamma_constraint
+        self.axis = axis
+        self.momentum = momentum
+        self.epsilon = epsilon
+        self.center = center
+        self.scale = scale
+        self.beta_initializer = initializers.get(beta_initializer)
+        self.gamma_initializer = initializers.get(gamma_initializer)
+        self.moving_mean_initializer = initializers.get(moving_mean_initializer)
+        self.moving_variance_initializer = initializers.get(
+            moving_variance_initializer
+        )
+        self.beta_regularizer = regularizers.get(beta_regularizer)
+        self.gamma_regularizer = regularizers.get(gamma_regularizer)
+        self.beta_constraint = constraints.get(beta_constraint)
+        self.gamma_constraint = constraints.get(gamma_constraint)
+        self.quantize = quantize
+        self.quantize_num_bits_weight = quantize_num_bits_weight
 
         # TODO: this is per channel
+        self._quantizer_weights = None
         if quantize:
-            self.weights_quantizer = default_n_bit_quantizers.DefaultNBitConvWeightsQuantizer()
+            self.weights_quantizer = quantizers.LastValueQuantizer(
+                num_bits=quantize_num_bits_weight,
+                per_axis=True,
+                symmetric=True,
+                narrow_range=True
+            )
         else:
             self.weights_quantizer = None
 
     def build(self, input_shape):
+        super().build(input_shape)
         self.axis = tf_utils.validate_axis(self.axis, input_shape)
-        input_shape = tf.TensorShape(input_shape)
-
-        input_channel = self._get_input_channel(input_shape)
-        if input_channel % self.groups != 0:
-            raise ValueError(
-                "The number of input channels must be evenly divisible by "
-                "the number of groups. Received groups={}, but the input "
-                "has {} channels (full input shape is {}).".format(
-                    self.groups, input_channel, input_shape
-                )
-            )
-        kernel_shape = self.kernel_size + (
-            input_channel // self.groups,
-            self.filters,
-        )
 
         # self.compute_output_shape contains validations for input_shape
         conv_output_shape = self.compute_output_shape(input_shape)
-
-        self.kernel = self.add_weight(
-            name="kernel",
-            shape=kernel_shape,
-            initializer=self.kernel_initializer,
-            regularizer=self.kernel_regularizer,
-            constraint=self.kernel_constraint,
-            trainable=True,
-            dtype=self.dtype,
-        )
-        if self.use_bias:
-            self.bias = self.add_weight(
-                name="bias",
-                shape=(self.filters,),
-                initializer=self.bias_initializer,
-                regularizer=self.bias_regularizer,
-                constraint=self.bias_constraint,
-                trainable=True,
-                dtype=self.dtype,
-            )
-        else:
-            self.bias = None
-        channel_axis = self._get_channel_axis()
-        self.input_spec = InputSpec(
-            min_ndim=self.rank + 2, axes={channel_axis: input_channel}
-        )
 
         axis_to_dim = {x: conv_output_shape.dims[x].value for x in self.axis}
         for x in axis_to_dim:
@@ -201,98 +156,22 @@ class QuantConv2DBatchLayer(keras.layers.Layer):
                 self._scope.set_partitioner(partitioner)
 
         if self.weights_quantizer is not None:
-            self.weights_quantizer.build(input_shape, "weights", self)
-
-        # Copy weights from original convolution and batch norm layer
-        conv_weights = self._conv_layer.get_weights()
-        conv_weights_len = len(conv_weights)
-        bn_weights = self._bn_layer.get_weights()
-        current_weights = self.get_weights()
-        for i in range(conv_weights_len):
-            current_weights[i] = conv_weights[i]
-
-        for j in range(len(conv_weights)):
-            current_weights[j + conv_weights_len] = bn_weights[j]
+            self._quantizer_weights = self.weights_quantizer.build(self.kernel.shape, "weights", self)
 
         self.built = True
 
-    def _spatial_output_shape(self, spatial_input_shape):
-        return [
-            conv_utils.conv_output_length(
-                length,
-                self.kernel_size[i],
-                padding=self.padding,
-                stride=self.strides[i],
-                dilation=self.dilation_rate[i],
-            )
-            for i, length in enumerate(spatial_input_shape)
-        ]
-
-    def compute_output_shape(self, input_shape):
-        """
-        Copied From: TensorFlow Conv Layer
-
-        Conv+Batch will have same output shape as original convolution layer, so it makes sense to use
-        convolution layer function
-        """
-        input_shape = tf.TensorShape(input_shape).as_list()
-        batch_rank = len(input_shape) - self.rank - 1
-        try:
-            if self.data_format == "channels_last":
-                return tf.TensorShape(
-                    input_shape[:batch_rank]
-                    + self._spatial_output_shape(input_shape[batch_rank:-1])
-                    + [self.filters]
-                )
-            else:
-                return tf.TensorShape(
-                    input_shape[:batch_rank]
-                    + [self.filters]
-                    + self._spatial_output_shape(input_shape[batch_rank + 1:])
-                )
-
-        except ValueError:
-            raise ValueError(
-                "One of the dimensions in the output is <= 0 "
-                f"due to downsampling in {self.name}. Consider "
-                "increasing the input size. "
-                f"Received input shape {input_shape} which would produce "
-                "output shape with a zero or negative value in a "
-                "dimension."
-            )
-
     def _get_folded_weights(self, variance):
-        return (self.gamma / tf.math.sqrt(variance + self.epsilon)) * self.kernel
+        gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
+        variance = tf.reshape(variance, (1, 1, 1, variance.shape[0]))
+        return (gamma / tf.math.sqrt(variance + self.epsilon)) * self.kernel
 
-    def _add_folded_bias(self, outputs, mean, variance, folded=True):
+    def _add_folded_bias(self, outputs, bias, mean, variance):
         # TODO: Handle multiple axes batch normalization
-        if folded:
-            bias = (self.bias - mean) * (
-                    self.gamma / tf.math.sqrt(variance + self.epsilon)) + self.beta
-        else:
-            bias = self.bias
-        output_rank = outputs.shape.rank
-        if self.rank == 1 and self._channels_first:
-            # nn.bias_add does not accept a 1D input tensor.
-            bias = tf.reshape(bias, (1, self.filters, 1))
-            outputs += bias
-        else:
-            # Handle multiple batch dimensions.
-            if output_rank is not None and output_rank > 2 + self.rank:
-
-                def _apply_fn(o):
-                    return tf.nn.bias_add(
-                        o, bias, data_format=self._tf_data_format
-                    )
-
-                outputs = conv_utils.squeeze_batch_dims(
-                    outputs, _apply_fn, inner_rank=self.rank + 1
-                )
-            else:
-                outputs = tf.nn.bias_add(
-                    outputs, bias, data_format=self._tf_data_format
-                )
-        return outputs
+        bias = (bias - mean) * (
+                self.gamma / tf.math.sqrt(variance + self.epsilon)) + self.beta
+        return tf.nn.bias_add(
+            outputs, bias, data_format=self._tf_data_format
+        )
 
     def call(self, inputs, training=None, **kwargs):
         input_shape = inputs.shape
@@ -308,11 +187,14 @@ class QuantConv2DBatchLayer(keras.layers.Layer):
 
             # quantization of weights
             if self.weights_quantizer is not None:
-                folded_weights = self.weights_quantizer.__call__(inputs, training, folded_weights)
+                folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                                 weights=self._quantizer_weights)
 
             outputs = self.convolution_op(inputs, folded_weights)
             if self.use_bias:
-                outputs = self._add_folded_bias(outputs, self.moving_mean, self.moving_variance)
+                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, self.moving_variance)
+            else:
+                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, self.moving_variance)
 
             if not tf.executing_eagerly() and input_shape.rank:
                 # Infer the static output shape:
@@ -323,7 +205,9 @@ class QuantConv2DBatchLayer(keras.layers.Layer):
 
         conv_out = self.convolution_op(inputs, self.kernel)
         if self.use_bias:
-            conv_out = self._add_folded_bias(conv_out, 0, 0, False)
+            conv_out = tf.nn.bias_add(
+                conv_out, self.bias, data_format=self._tf_data_format
+            )
         bn_input_shape = conv_out.shape
         ndims = len(bn_input_shape)
         reduction_axes = [i for i in range(ndims) if i not in self.axis]
@@ -363,12 +247,15 @@ class QuantConv2DBatchLayer(keras.layers.Layer):
 
         # quantization of weights
         if self.weights_quantizer is not None:
-            folded_weights = self.weights_quantizer.__call__(inputs, training, folded_weights)
+            folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                             weights=self._quantizer_weights)
 
         outputs = self.convolution_op(inputs, folded_weights)
 
         if self.use_bias:
-            outputs = self._add_folded_bias(outputs, batch_mean, batch_variance)
+            outputs = self._add_folded_bias(outputs, self.bias, batch_mean, batch_variance)
+        else:
+            outputs = self._add_folded_bias(outputs, [0], batch_mean, batch_variance)
 
         return outputs
 
@@ -403,63 +290,6 @@ class QuantConv2DBatchLayer(keras.layers.Layer):
                 with tf.compat.v1.colocate_with(variable):
                     return tf.compat.v1.assign(variable, value, name=scope)
 
-    def convolution_op(self, inputs, kernel):
-        if self.padding == "causal":
-            tf_padding = "VALID"  # Causal padding handled in `call`.
-        elif isinstance(self.padding, str):
-            tf_padding = self.padding.upper()
-        else:
-            tf_padding = self.padding
-
-        return tf.nn.convolution(
-            inputs,
-            kernel,
-            strides=list(self.strides),
-            padding=tf_padding,
-            dilations=list(self.dilation_rate),
-            data_format=self._tf_data_format,
-            name=self.__class__.__name__,
-        )
-
-    def _compute_causal_padding(self, inputs):
-        """Calculates padding for 'causal' option for 1-d conv layers."""
-        left_pad = self.dilation_rate[0] * (self.kernel_size[0] - 1)
-        if getattr(inputs.shape, "ndims", None) is None:
-            batch_rank = 1
-        else:
-            batch_rank = len(inputs.shape) - 2
-        if self.data_format == "channels_last":
-            causal_padding = [[0, 0]] * batch_rank + [[left_pad, 0], [0, 0]]
-        else:
-            causal_padding = [[0, 0]] * batch_rank + [[0, 0], [left_pad, 0]]
-        return causal_padding
-
-    def _get_channel_axis(self):
-        if self.data_format == "channels_first":
-            return -1 - self.rank
-        else:
-            return -1
-
-    def _get_input_channel(self, input_shape):
-        channel_axis = self._get_channel_axis()
-        if input_shape.dims[channel_axis].value is None:
-            raise ValueError(
-                "The channel dimension of the inputs should be defined. "
-                f"The input_shape received is {input_shape}, "
-                f"where axis {channel_axis} (0-based) "
-                "is the channel dimension, which found to be `None`."
-            )
-        return int(input_shape[channel_axis])
-
-    def _get_padding_op(self):
-        if self.padding == "causal":
-            op_padding = "valid"
-        else:
-            op_padding = self.padding
-        if not isinstance(op_padding, (list, tuple)):
-            op_padding = op_padding.upper()
-        return op_padding
-
     @property
     def _param_dtype(self):
         # Raise parameters of fp16 batch norm to fp32
@@ -468,4 +298,27 @@ class QuantConv2DBatchLayer(keras.layers.Layer):
         else:
             return self.dtype or tf.float32
 
-    # TODO: get_config(), set_config(), vyřešit přenos váh concat of weights should work
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "axis": self.axis,
+            "momentum": self.momentum,
+            "epsilon": self.epsilon,
+            "center": self.center,
+            "scale": self.scale,
+            "beta_initializer": initializers.serialize(self.beta_initializer),
+            "gamma_initializer": initializers.serialize(self.gamma_initializer),
+            "moving_mean_initializer": initializers.serialize(
+                self.moving_mean_initializer
+            ),
+            "moving_variance_initializer": initializers.serialize(
+                self.moving_variance_initializer
+            ),
+            "beta_regularizer": regularizers.serialize(self.beta_regularizer),
+            "gamma_regularizer": regularizers.serialize(self.gamma_regularizer),
+            "beta_constraint": constraints.serialize(self.beta_constraint),
+            "gamma_constraint": constraints.serialize(self.gamma_constraint),
+            "quantize": self.quantize,
+            "quantize_num_bits_weight": self.quantize_num_bits_weight
+        }
+        return dict(list(base_config.items()) + list(config.items()))

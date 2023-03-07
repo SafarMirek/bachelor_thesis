@@ -74,6 +74,7 @@ class PerLayerQuantizeModelTransformer:
             default_n_bit_transforms.DenseBatchNormQuantize(),
             default_n_bit_transforms.DenseBatchNormReLUQuantize(),
             default_n_bit_transforms.DenseBatchNormActivationQuantize(),
+            custom_n_bit_quantize_layout_transform.Conv2DBatchNormReluQuantize(),
         ]
 
         self._nodes = [layer["config"]["name"] for layer in self._config["layers"]]
@@ -240,6 +241,9 @@ class PerLayerQuantizeModelTransformer:
 
     def get_number_of_quantizable_layers(self) -> int:
         return len(self._layers_groups)
+
+    def get_quantizable_layers_groups(self):
+        return self._layers_groups
 
     def get_layers_quantize_group_map(self):
         return self._layers_group_index_map
