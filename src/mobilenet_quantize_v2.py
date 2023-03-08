@@ -21,9 +21,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument('-e', '--epochs', default=50, type=int)
 parser.add_argument('-b', '--batch-size', default=256, type=int)
 
-parser.add_argument('--wb', '--weight_bits', default=8, type=int)
+parser.add_argument('--weight-bits', '--wb', default=8, type=int)
 
-parser.add_argument('--lr', '--learning-rate', default=0.001, type=float)
+parser.add_argument('--learning-rate', '--lr', default=0.001, type=float)
 parser.add_argument('--warmup', default=0.0, type=float)
 
 parser.add_argument("--logs-dir", default="logs/fit/")
@@ -105,7 +105,7 @@ def main():
     if args.weight_bits < 2 or args.weight_bits > 8:
         raise ValueError("Weight bits must be in <2,8> interval.")
 
-    if args.warmup < 0 or args.weight_bits > 1:
+    if args.warmup < 0 or args.warmup > 1:
         raise ValueError("Warmup % must be in <0,1> interval.")
 
     model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3), alpha=0.25)
