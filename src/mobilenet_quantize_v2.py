@@ -159,7 +159,7 @@ def main():
     # Define checkpoint callback for saving model weights after each epoch
     checkpoints_dir = os.path.abspath(args.checkpoints_dir)
     checkpoints_dir = os.path.join(checkpoints_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
-    os.mkdir(checkpoints_dir)
+    os.makedirs(checkpoints_dir)
 
     checkpoint_filepath = checkpoints_dir + '/weights-{epoch:03d}-{val_accuracy:.4f}.hdf5'
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -172,6 +172,7 @@ def main():
     # Define the Keras TensorBoard callback.
     logs_dir = os.path.abspath(args.logs_dir)
     logs_dir = os.path.join(logs_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    os.makedirs(logs_dir)
     tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logs_dir)
 
     # Train
