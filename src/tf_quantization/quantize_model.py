@@ -1,4 +1,3 @@
-from keras.saving.object_registration import custom_object_scope
 from tensorflow_model_optimization.python.core.quantization.keras import quantize_scheme
 from tensorflow_model_optimization.python.core.quantization.keras.quantize import quantize_annotate_model, \
     quantize_apply, quantize_scope

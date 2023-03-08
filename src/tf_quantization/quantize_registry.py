@@ -1,6 +1,7 @@
 import warnings
 from abc import ABC, abstractmethod
 
+from tensorflow import keras
 import keras.layers
 
 import tensorflow_model_optimization as tfmot
