@@ -29,6 +29,9 @@ parser.add_argument('--warmup', default=0.0, type=float)
 parser.add_argument("--logs-dir", default="logs/fit/")
 parser.add_argument("--checkpoints-dir", default="checkpoints/")
 
+parser.add_argument('--from-checkpoint', default=None, type=str)
+parser.add_argument('--start-epoch', default=0, type=int)
+
 parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
 parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
 
@@ -93,6 +96,7 @@ def main():
     args = parser.parse_args()
     if args.verbose:
         print("Used configuration:")
+        print(f'Start epoch: {args.start_epoch}')
         print(f'Number of epochs: {args.epochs}')
         print(f'Batch Size: {args.batch_size}')
         print(f'Weights bits: {args.weight_bits}')
@@ -101,6 +105,8 @@ def main():
         print(f'Checkpoints directory: {args.checkpoints_dir}')
         print(f'Logs directory: {args.logs_dir}')
         print(f'Cache training dataset: {args.cache}')
+        if args.from_checkpoint is not None:
+            print(f'From checkpoint: {args.from_checkpoint}')
 
     if args.weight_bits < 2 or args.weight_bits > 8:
         raise ValueError("Weight bits must be in <2,8> interval.")
@@ -142,6 +148,9 @@ def main():
 
     q_aware_model.summary()
 
+    if args.from_checkpoint is not None:
+        q_aware_model.load_weights(args.from_checkpoint)
+
     total_steps = len(train_ds) * args.epochs
     # 10% of the steps
     warmup_steps = int(args.warmup * total_steps)  # do not use warmup, only cosine decay
@@ -178,7 +187,7 @@ def main():
     # Train
     q_aware_model.fit(train_ds, epochs=args.epochs, validation_data=test_ds,
                       callbacks=[model_checkpoint_callback, tensorboard_callback],
-                      initial_epoch=0)
+                      initial_epoch=args.start_epoch)
 
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     print(f'Top-1 accuracy after (quantize aware float): {qa_acc * 100:.2f}%')
