@@ -6,9 +6,9 @@ def get_imagenet_mini_dataset(split="train"):
     """This method process and returns imagenet-mini dataset"""
     if split == "val":
         return tfds.load('imagenet_v2', split='test', shuffle_files=True)
-    builder = tfds.ImageFolder('data/images/imagenet-mini')  # data/images/imagenet-mini
-    ds = builder.as_dataset(split=split)
-    return ds
+    elif split == "train":
+        return tfds.load('imagenet150', split='train', shuffle_files=True)
+    raise ValueError("Split must be train or val")
 
 
 def preprocess_image(data, image_size=(224, 224)):
