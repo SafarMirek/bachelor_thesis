@@ -170,10 +170,10 @@ class QuantConv2DBatchLayer(keras.layers.Conv2D):
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
         return (std_dev / gamma) * outputs
 
-    def _add_folded_bias(self, outputs, bias, mean, variance):
+    def _add_folded_bias(self, outputs, bias, mean, std_dev):
         # TODO: Handle multiple axes batch normalization
         bias = (bias - mean) * (
-                self.gamma / tf.math.sqrt(variance + self.epsilon)) + self.beta
+                self.gamma / std_dev) + self.beta
         return tf.nn.bias_add(
             outputs, bias, data_format=self._tf_data_format
         )
