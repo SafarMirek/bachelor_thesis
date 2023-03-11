@@ -169,20 +169,15 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
 
         self.built = True
 
-    def _reset_folded_weights(self, std_dev, outputs):
-        gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
-        std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
-        return (std_dev / gamma) * outputs
-
-    def _get_folded_weights(self, std_dev):
+    def _get_folded_weights(self, variance):
         gamma = tf.reshape(self.gamma, (1, 1, self.gamma.shape[0], 1))
-        std_dev = tf.reshape(std_dev, (1, 1, std_dev.shape[0], 1))
-        return (gamma / std_dev) * self.depthwise_kernel
+        variance = tf.reshape(variance, (1, 1, variance.shape[0], 1))
+        return (gamma / tf.math.sqrt(variance + self.epsilon)) * self.depthwise_kernel
 
-    def _add_folded_bias(self, outputs, bias, mean, std_dev):
+    def _add_folded_bias(self, outputs, bias, mean, variance):
         # TODO: Handle multiple axes batch normalization
         bias = (bias - mean) * (
-                self.gamma / std_dev) + self.beta
+                self.gamma / tf.math.sqrt(variance + self.epsilon)) + self.beta
         return tf.nn.bias_add(
             outputs, bias, data_format=self._tf_data_format
         )
@@ -194,8 +189,7 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
             training = tf.keras.backend.learning_phase()
 
         if not training:
-            moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-            folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
+            folded_weights = self._get_folded_weights(variance=self.moving_variance)
 
             # quantization of weights
             if self.weights_quantizer is not None:
@@ -215,9 +209,9 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
             )
 
             if self.use_bias:
-                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
+                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, self.moving_variance)
             else:
-                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
+                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, self.moving_variance)
 
             # TODO: Activation and activation quantization
             # if self.activation is not None:
@@ -225,36 +219,23 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
 
             return outputs
 
-        moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-        folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
-        # quantization of weights
-        if self.weights_quantizer is not None:
-            channellast_folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-            channellast_folded_weights = self.weights_quantizer.__call__(channellast_folded_weights, training,
-                                                                         weights=self._quantizer_weights)
-            folded_weights = tf.transpose(channellast_folded_weights, [0, 1, 3, 2])
-
-        outputs = backend.depthwise_conv2d(
+        conv_out = backend.depthwise_conv2d(
             inputs,
-            folded_weights,
+            self.depthwise_kernel,
             strides=self.strides,
             padding=self.padding,
             dilation_rate=self.dilation_rate,
             data_format=self.data_format,
         )
-
-        # * ( std_dev / gamma)
-        outputs = self._reset_folded_weights(moving_std_dev, outputs)
-
         if self.use_bias:
-            outputs = backend.bias_add(
-                outputs, self.bias, data_format=self._tf_data_format
+            conv_out = backend.bias_add(
+                conv_out, self.bias, data_format=self._tf_data_format
             )
 
-        bn_input_shape = outputs.shape
+        bn_input_shape = conv_out.shape
         ndims = len(bn_input_shape)
         reduction_axes = [i for i in range(ndims) if i not in self.axis]
-        batch_mean, batch_variance = tf.nn.moments(outputs, reduction_axes, keepdims=len(self.axis) > 1)
+        batch_mean, batch_variance = tf.nn.moments(conv_out, reduction_axes, keepdims=len(self.axis) > 1)
 
         # Update moving mean and variance
         new_mean, new_variance = batch_mean, batch_variance
@@ -286,26 +267,38 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
         self.add_update(mean_update)
         self.add_update(variance_update)
 
-        broadcast_shape = [1] * ndims
-        broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
+        # batch_mean = self.moving_mean
+        # batch_variance = self.moving_variance
 
-        def _broadcast(v):
-            if (
-                    v is not None
-                    and len(v.shape) != ndims
-                    and reduction_axes != list(range(ndims - 1))
-            ):
-                return tf.reshape(v, broadcast_shape)
-            return v
+        folded_weights = self._get_folded_weights(variance=self.moving_variance)
 
-        outputs = tf.nn.batch_normalization(
-            outputs,
-            _broadcast(batch_mean),
-            _broadcast(batch_variance),
-            _broadcast(self.beta),
-            _broadcast(self.gamma),
-            self.epsilon,
+        # quantization of weights
+        if self.weights_quantizer is not None:
+            channellast_folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
+            channellast_folded_weights = self.weights_quantizer.__call__(channellast_folded_weights, training,
+                                                                         weights=self._quantizer_weights)
+            folded_weights = tf.transpose(channellast_folded_weights, [0, 1, 3, 2])
+
+        outputs = backend.depthwise_conv2d(
+            inputs,
+            folded_weights,
+            strides=self.strides,
+            padding=self.padding,
+            dilation_rate=self.dilation_rate,
+            data_format=self.data_format,
         )
+
+        # Pro použití předchozího schéma stačí zakomentovat tyhle řádky a u get_folded_weights dát batch_variance
+        batch_variance_re = tf.reshape(batch_variance, (1, 1, 1, batch_variance.shape[0]))
+        moving_variance_re = tf.reshape(self.moving_variance, (1, 1, 1, self.moving_variance.shape[0]))
+        batch_variance_sqrt = tf.math.sqrt(batch_variance_re + self.epsilon)
+        moving_variance_sqrt = tf.math.sqrt(moving_variance_re + self.epsilon)
+        outputs = outputs * (moving_variance_sqrt / batch_variance_sqrt)
+
+        if self.use_bias:
+            outputs = self._add_folded_bias(outputs, self.bias, batch_mean, batch_variance)
+        else:
+            outputs = self._add_folded_bias(outputs, [0], batch_mean, batch_variance)
 
         return outputs
 

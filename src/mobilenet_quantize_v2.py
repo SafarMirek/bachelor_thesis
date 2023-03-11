@@ -158,12 +158,21 @@ def main():
     schedule = WarmUpCosineDecay(target_lr=args.learning_rate, warmup_steps=warmup_steps, total_steps=total_steps,
                                  hold=warmup_steps)
 
-    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=schedule),
+    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
 
+    if not args.from_checkpoint:
+        # Train activation moving averages
+        q_aware_model.fit(train_ds, epochs=2)
+        q_aware_model.save("q_aware_model_after_fit0.h5")
+
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     print(f'Top-1 accuracy before QAT (quantized float): {qa_acc * 100:.2f}%')
+
+    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=schedule),
+                          loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                          metrics=['accuracy'])
 
     # Define checkpoint callback for saving model weights after each epoch
     checkpoints_dir = os.path.abspath(args.checkpoints_dir)
