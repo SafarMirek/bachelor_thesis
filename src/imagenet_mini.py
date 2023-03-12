@@ -7,7 +7,7 @@ def get_imagenet_mini_dataset(split="train"):
     if split == "val":
         return tfds.load('imagenet_v2', split='test', shuffle_files=True)
     elif split == "train":
-        return tfds.load('imagenet150', split='train', shuffle_files=True)
+        return tfds.load('imagenet_0_25', split='train', shuffle_files=True)
     raise ValueError("Split must be train or val")
 
 

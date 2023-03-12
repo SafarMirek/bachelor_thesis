@@ -5,6 +5,8 @@ from datetime import datetime
 from tensorflow import keras
 import tensorflow as tf
 
+from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
+from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_model import quantize_model
 import imagenet_mini
 import os
@@ -19,6 +21,7 @@ parser = argparse.ArgumentParser(
     epilog='')
 
 parser.add_argument('-e', '--epochs', default=50, type=int)
+parser.add_argument('--bn-freeze', default=20, type=int)
 parser.add_argument('-b', '--batch-size', default=256, type=int)
 
 parser.add_argument('--weight-bits', '--wb', default=8, type=int)
@@ -158,21 +161,21 @@ def main():
     schedule = WarmUpCosineDecay(target_lr=args.learning_rate, warmup_steps=warmup_steps, total_steps=total_steps,
                                  hold=warmup_steps)
 
-    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
-                          loss=tf.keras.losses.SparseCategoricalCrossentropy(),
-                          metrics=['accuracy'])
-
     if not args.from_checkpoint:
+        q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
+                              loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                              metrics=['accuracy'])
+
         # Train activation moving averages
         q_aware_model.fit(train_ds, epochs=2)
         q_aware_model.save("q_aware_model_after_fit0.h5")
 
-    qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
-    print(f'Top-1 accuracy before QAT (quantized float): {qa_acc * 100:.2f}%')
-
     q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=schedule),
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
+
+    qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
+    print(f'Top-1 accuracy before QAT (quantized float): {qa_acc * 100:.2f}%')
 
     # Define checkpoint callback for saving model weights after each epoch
     checkpoints_dir = os.path.abspath(args.checkpoints_dir)
@@ -193,13 +196,32 @@ def main():
     os.makedirs(logs_dir)
     tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logs_dir)
 
-    # Train
-    q_aware_model.fit(train_ds, epochs=args.epochs, validation_data=test_ds,
+    not_frozen_epochs = min(args.epochs, args.bn_freeze)
+
+    # Train with not frozen batch norms
+    q_aware_model.fit(train_ds, epochs=not_frozen_epochs, validation_data=test_ds,
                       callbacks=[model_checkpoint_callback, tensorboard_callback],
                       initial_epoch=args.start_epoch)
 
+    if args.epochs > args.bn_freeze:
+        # Train with bn frozen
+        freeze_bn(q_aware_model)
+        q_aware_model.fit(train_ds, epochs=args.epochs, validation_data=test_ds,
+                          callbacks=[model_checkpoint_callback, tensorboard_callback],
+                          initial_epoch=not_frozen_epochs)
+
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     print(f'Top-1 accuracy after (quantize aware float): {qa_acc * 100:.2f}%')
+
+
+def freeze_bn(model):
+    for layer in model.layers:
+        if (isinstance(layer, QuantConv2DBatchLayer) or
+                isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer)):
+            layer.freeze_bn()
+        if isinstance(layer, keras.layers.BatchNormalization):
+            layer.trainable = False
+            layer.training = False
 
 
 if __name__ == "__main__":
