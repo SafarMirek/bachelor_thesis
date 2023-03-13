@@ -8,7 +8,7 @@ import tensorflow as tf
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_model import quantize_model
-from datasets import imagenet_mini
+from datasets import cifar10
 import os
 import numpy as np
 
@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(
     epilog='')
 
 parser.add_argument('-e', '--epochs', default=50, type=int)
-parser.add_argument('--bn-freeze', default=20, type=int)
+parser.add_argument('--bn-freeze', default=30, type=int)
 parser.add_argument('-b', '--batch-size', default=256, type=int)
 
 parser.add_argument('--weight-bits', '--wb', default=8, type=int)
@@ -117,15 +117,15 @@ def main():
     if args.warmup < 0 or args.warmup > 1:
         raise ValueError("Warmup % must be in <0,1> interval.")
 
-    model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3), alpha=0.25)
+    model = tf.keras.applications.MobileNet(weights=None, input_shape=(32, 32, 3), alpha=0.2, classes=10)
 
     if args.verbose:
         print("Original model")
         model.summary()
 
     # Load dataset
-    tr_ds = imagenet_mini.get_imagenet_mini_dataset(split="train")
-    tr_ds = tr_ds.map(imagenet_mini.get_preprocess_image_fn(image_size=(224, 224)))
+    tr_ds = cifar10.get_imagenet_mini_dataset(split="train")
+    tr_ds = tr_ds.map(cifar10.get_preprocess_image_fn(image_size=(32, 32)))
 
     if args.cache:
         tr_ds = tr_ds.cache()
@@ -134,13 +134,19 @@ def main():
 
     train_ds = train_ds.shuffle(10000).batch(args.batch_size)
 
-    ds = imagenet_mini.get_imagenet_mini_dataset(split="val")
-    ds = ds.map(imagenet_mini.get_preprocess_image_fn(image_size=(224, 224)))
+    ds = cifar10.get_imagenet_mini_dataset(split="test")
+    ds = ds.map(cifar10.get_preprocess_image_fn(image_size=(32, 32)))
 
     if args.cache:
         ds = ds.cache()
 
     test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(args.batch_size)
+
+    model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=0.01, momentum=0.5),
+                  loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                  metrics=['accuracy'])
+
+    model.fit(train_ds, epochs=100, validation_data=test_ds)
 
     if args.verbose:
         print("Quantize model")
@@ -167,10 +173,9 @@ def main():
                               metrics=['accuracy'])
 
         # Train activation moving averages
-        q_aware_model.fit(train_ds, epochs=2)
-        q_aware_model.save("q_aware_model_after_fit0.h5")
+        q_aware_model.fit(train_ds, epochs=3)
 
-    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=schedule),
+    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=schedule, momentum=0.9),
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
 
@@ -208,7 +213,7 @@ def main():
         freeze_bn(q_aware_model)
         q_aware_model.fit(train_ds, epochs=args.epochs, validation_data=test_ds,
                           callbacks=[model_checkpoint_callback, tensorboard_callback],
-                          initial_epoch=not_frozen_epochs)
+                          initial_epoch=args.bn_freeze)
 
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     print(f'Top-1 accuracy after (quantize aware float): {qa_acc * 100:.2f}%')

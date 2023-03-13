@@ -1,13 +1,11 @@
 import argparse
 from abc import ABC
-from datetime import datetime
 
 from tensorflow import keras
 import tensorflow as tf
 
 from tf_quantization.quantize_model import quantize_model
-import imagenet_mini
-import os
+from datasets import imagenet_mini
 import numpy as np
 
 parser = argparse.ArgumentParser(
@@ -17,7 +15,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('-b', '--batch-size', default=256, type=int)
 
-parser.add_argument('--wb', '--weight_bits', default=8, type=int)
+parser.add_argument('--weight-bits', '--wb', default=8, type=int)
 
 parser.add_argument('--from-checkpoint', default=None, type=str)
 
@@ -82,7 +80,7 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
 def main():
     args = parser.parse_args()
     print(f'Batch Size: {args.batch_size}, Weights bits: {args.weight_bits}')
-    model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3), alpha=0.25)
+    model = tf.keras.applications.MobileNet(weights='imagenet', input_shape=(224, 224, 3))  # , alpha=0.25)
 
     # Load testing dataset
     ds = imagenet_mini.get_imagenet_mini_dataset(split="val")
@@ -92,19 +90,24 @@ def main():
 
     quant_layer_conf = {"weight_bits": args.weight_bits, "activation_bits": 8}
 
-    q_aware_model = quantize_model(model, [quant_layer_conf for i in range(37)])
+    q_aware_model = quantize_model(model, [quant_layer_conf for _ in range(37)])
 
     q_aware_model.summary()
 
-    q_aware_model.load_weights(args.from_checkpoint)
+    if args.from_checkpoint is not None:
+        q_aware_model.load_weights(args.from_checkpoint)
+    else:
+        # its needed to run one fit to update last value quantizers.
+        q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
+                              loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                              metrics=['accuracy'])
 
-    # `quantize_model` requires a recompile.
-    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.00000001),
-                          loss=tf.keras.losses.SparseCategoricalCrossentropy(),
-                          metrics=['accuracy'])
+        q_aware_model.fit(test_ds.take(1))
 
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     print(f'Top-1 accuracy (quantized float): {qa_acc * 100:.2f}%')
+
+    q_aware_model.save("q_aware_model_evaluate.h5")
 
 
 if __name__ == "__main__":
