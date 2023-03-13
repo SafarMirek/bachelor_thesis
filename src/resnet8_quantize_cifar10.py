@@ -39,6 +39,7 @@ parser.add_argument('--start-epoch', default=0, type=int)
 
 parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
 parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
+parser.add_argument('--resnet-path', default="resnet8.keras", type=str)
 
 
 def lr_warmup_cosine_decay(global_step,
@@ -119,7 +120,7 @@ def main():
     if args.warmup < 0 or args.warmup > 1:
         raise ValueError("Warmup % must be in <0,1> interval.")
 
-    model = ResNet8(input_shape=(32, 32, 3), classes=10)
+    model = keras.models.load_model(args.resnet_path)
 
     if args.verbose:
         print("Original model")
@@ -143,19 +144,12 @@ def main():
 
     test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(args.batch_size)
 
-    lr_schedule = WarmUpCosineDecay(target_lr=args.learning_rate, warmup_steps=0, total_steps=len(train_ds) * 70,
-                                    hold=0)
-
-    boundaries = [82 * len(train_ds), 123 * len(train_ds), 300 * len(train_ds)]
-    values = [0.1, 0.01, 0.001, 0.0002]
-    learning_rate_fn = keras.optimizers.schedules.PiecewiseConstantDecay(
-        boundaries, values)
-
-    model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn, momentum=0.9),
+    model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=0.1),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 
-    model.fit(train_ds, epochs=200, validation_data=test_ds)
+    model_loss, model_acc = model.evaluate(test_ds)
+    print(f'Top-1 accuracy (32-bit float): {model_acc * 100:.2f}%')
 
     if args.verbose:
         print("Quantize model")
