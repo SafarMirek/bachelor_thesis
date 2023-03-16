@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(
     epilog='')
 
 parser.add_argument('-e', '--epochs', default=200, type=int)
-parser.add_argument('-b', '--batch-size', default=256, type=int)
+parser.add_argument('-b', '--batch-size', default=128, type=int)
 
 parser.add_argument('--learning-rate', '--lr', default=0.045, type=float)
 
@@ -46,7 +46,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             print(f'From checkpoint: {from_checkpoint}')
 
     # Create model
-    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.5, weights=None)
+    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.25, weights=None)
 
     if verbose:
         model.summary()
@@ -76,7 +76,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
 
     train_ds = train_ds.shuffle(10000) \
         .batch(batch_size)
-    # .map(lambda x, y: (augment(x), y)) \
+    #     .map(lambda x, y: (augment(x), y)) \
 
     ds = tinyimagenet.get_tinyimagenet_dataset(split="val")
     ds = ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
@@ -89,11 +89,11 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
     learning_rate_fn = keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate=learning_rate,
         decay_steps=2.5 * len(train_ds),
-        decay_rate=0.94
+        decay_rate=0.98
     )
 
-    model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn, momentum=0.9,
-                                                           decay=5e-4),
+    model.compile(optimizer=tf.keras.optimizers.legacy.RMSprop(learning_rate=learning_rate_fn,
+                                                               momentum=0.9),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 
