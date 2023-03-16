@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(
     epilog='')
 
 parser.add_argument('-e', '--epochs', default=200, type=int)
-parser.add_argument('-b', '--batch-size', default=128, type=int)
+parser.add_argument('-b', '--batch-size', default=256, type=int)
 
 parser.add_argument('--learning-rate', '--lr', default=0.045, type=float)
 
@@ -73,10 +73,10 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             return data_augmentation(x, training=True)
 
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
-    train_ds = train_ds.shuffle(int(0.5 * len(train_ds))) \
-        .map(lambda x, y: (augment(x), y)) \
-        .batch(batch_size) \
-        .prefetch(100)
+
+    train_ds = train_ds.shuffle(10000) \
+        .batch(batch_size)
+    # .map(lambda x, y: (augment(x), y)) \
 
     ds = tinyimagenet.get_tinyimagenet_dataset(split="val")
     ds = ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
