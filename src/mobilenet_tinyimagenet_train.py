@@ -88,7 +88,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
 
     learning_rate_fn = keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate=learning_rate,
-        decay_steps=2.5,
+        decay_steps=2.5 * len(train_ds),
         decay_rate=0.94
     )
 
