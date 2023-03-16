@@ -25,7 +25,6 @@ class PerLayerNBitQuantizeScheme(quantize_scheme.QuantizeScheme):
 
 def quantize_model(model, quantization_config):
     # TODO: Implement support for transforms, that changes layers (SeparableConv, etc...)
-    # TODO: Make graph transform to make better Conv+BN+Relu handling (implement some typ)
 
     with quantize_scope({
         "QuantConv2DBatchLayer": QuantConv2DBatchLayer,

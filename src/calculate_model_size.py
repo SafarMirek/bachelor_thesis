@@ -10,7 +10,17 @@ def calculate_weights_mobilenet_size(model, per_channel=True):
     size = 0  # Model size in bits
     for layer in model.layers:
         layer_size = 0
-        if isinstance(layer, QuantizeWrapperV2):
+        if isinstance(layer, keras.layers.Dense) or isinstance(layer, keras.layers.Conv2D):
+            layer_size = layer_size + 32 * np.prod(layer.kernel.shape)
+
+            if layer.use_bias:
+                layer_size = layer_size + 32 * np.prod(layer.bias.shape)
+        elif isinstance(layer, keras.layers.DepthwiseConv2D):
+            layer_size = layer_size + 32 * np.prod(layer.depthwise_kernel.shape)
+
+            if layer.use_bias:
+                layer_size = layer_size + 32 * np.prod(layer.bias.shape)
+        elif isinstance(layer, QuantizeWrapperV2):
             num_bits_weight = 8
             if "num_bits_weight" in layer.quantize_config.get_config():
                 num_bits_weight = layer.quantize_config.get_config()["num_bits_weight"]
@@ -35,7 +45,7 @@ def calculate_weights_mobilenet_size(model, per_channel=True):
 
                 if layer.layer.use_bias:
                     layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias is not quantized
-        if isinstance(layer, QuantConv2DBatchLayer):
+        elif isinstance(layer, QuantConv2DBatchLayer):
             num_bits_weight = layer.quantize_num_bits_weight
             layer_size = layer_size + num_bits_weight * np.prod(layer.kernel.shape)
 
