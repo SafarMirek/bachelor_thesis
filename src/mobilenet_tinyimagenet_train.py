@@ -1,17 +1,12 @@
 import argparse
-from abc import ABC
 from datetime import datetime
 
 from keras.applications import MobileNet
 from tensorflow import keras
 import tensorflow as tf
-from tensorflow.python.data import AUTOTUNE
-from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapper
 
-from resnet_models import ResNet8, ResNet18
-from datasets import cifar100, tinyimagenet
+from datasets import tinyimagenet
 import os
-import numpy as np
 
 # Script arguments
 parser = argparse.ArgumentParser(
