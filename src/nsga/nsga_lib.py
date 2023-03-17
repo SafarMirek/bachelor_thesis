@@ -1,15 +1,15 @@
 # Author: Vojtěch Mrázek (mrazek@fit.vutbr.cz)
+# Edited by Miroslav Šafář (xsafar23@fit.vutbr.cz)
 
-from __future__ import print_function
-from paretoarchive import PyBspTreeArchive
+import numpy as np
 import json, gzip
-import random
-import datetime, os
-import argparse
+import os
 import tensorflow as tf
 import glob
-from shutil import copyfile
-import re
+
+import calculate_model_size
+import cifar10_qat_evaluate
+from tf_quantization.quantize_model import quantize_model
 
 
 def crowding_distance(par, maximal, objs=["accuracy", "memory"]):
@@ -40,26 +40,25 @@ def crowding_reduce(par, number, maximal):
 
 
 class Analyzer:
-    def __init__(self, config, config_fn, data_dir, batch_size=1000, iterations=10):
-        self.cache_prefix = os.path.basename(config_fn).replace(".pb", "")
-        self.config = config
-        self.data_dir = data_dir
-        self.config_fn = config_fn
+    def __init__(self, base_model, batch_size=64, qat_epochs=10, pretrained_qat_weights_path=None):
+        self.base_model = base_model
         self.batch_size = batch_size
-        self.iterations = iterations
+        self.qat_epochs = qat_epochs
+        self.pretrained_qat_weights_path = pretrained_qat_weights_path
 
+        # Current cache file
         i = 0
         while 1:
-            self.cache_file = "cache/%s_%d_%d_%d.json.gz" % (self.cache_prefix, batch_size, iterations, i)
+            self.cache_file = "cache/%s_%d_%d_%d.json.gz" % ("resnet8", batch_size, qat_epochs, i)
             if not os.path.isfile(self.cache_file): break
             i += 1
 
         print("Cache file: %s" % self.cache_file)
         self.cache = []
-        self.refresh_cache()
+        self.load_cache()
 
-    def refresh_cache(self):
-        for fn in glob.glob("cache/%s_%d_%d_*.json.gz" % (self.cache_prefix, self.batch_size, self.iterations)):
+    def load_cache(self):
+        for fn in glob.glob("cache/%s_%d_%d_*.json.gz" % ("resnet8", self.batch_size, self.qat_epochs)):
             if fn == self.cache_file: continue
             print("cache open", fn)
 
@@ -67,70 +66,63 @@ class Analyzer:
 
             # find node in cache
             for c in act:
-                conf = c["multconf"]
+                conf = c["quant_conf"]
 
                 # try to search in cache
-                cache_sel = self.cache.copy()
-                # filter data and calculate the energy
-                for l in self.config["layers"]:
-                    cache_sel = filter(lambda x: x["multconf"][l] == conf[l], cache_sel)
-                    cache_sel = list(cache_sel)
-
-                if not cache_sel:
+                if not any(filter(lambda x: np.array_equal(x["quant_conf"], conf), self.cache)):
                     self.cache.append(c)
 
-        tf.logging.info("Cache update %d" % (len(self.cache)))
+        tf.logging.info("Cache loaded %d" % (len(self.cache)))
 
-    def analyze(self, config_set, update_iter=True, update_node=False):
-        config = self.config
-
-        if update_iter:
-            self.refresh_cache()
-
-        for allconf in config_set:
-            conf = allconf["multconf"]
+    def analyze(self, quant_configuration_set):
+        for node_conf in quant_configuration_set:
+            quant_conf = node_conf["quant_conf"]
 
             # try to search in cache
             cache_sel = self.cache.copy()
             # print(len(cache_sel))
-            power = 0.0
-            sumlayers = 0
 
-            # filter data and calculate the energy
-            for l in config["layers"]:
-                cache_sel = filter(lambda x: x["multconf"][l] == conf[l], cache_sel)
+            # filter data
+            for i in range(len(quant_conf)):
+                cache_sel = filter(lambda x: x["quant_conf"][i] == quant_conf[i], cache_sel)
                 cache_sel = list(cache_sel)
-
-                power += config["power"][conf[l]] * config["layers"][l]
-                sumlayers += config["layers"][l]
-
-            power = float(power) / sumlayers
 
             # Get the accuracy
             if len(cache_sel) >= 1:
                 accuracy = cache_sel[0]["accuracy"]
-                tf.logging.info("Cache : %s;accuracy=%s;" % (str(conf), accuracy))
+                memory = cache_sel[0]["memory"]
+                tf.logging.info("Cache : %s;accuracy=%s;memory=%s;" % (str(quant_conf), accuracy, memory))
             else:
-                # assert False # todo run inference and save to cache
-                accuracy = cifar10_ax_inference.main(data_dir=self.data_dir, config=self.config_fn,
-                                                     iterations=self.iterations, batch_size=self.batch_size, mult=conf,
-                                                     tune=True)
+                quantized_model = self.quantize_model_by_config(quant_conf)
+
+                # TODO: Run QAT for some amount of epochs and then evaluate the accurancy
+                accuracy = cifar10_qat_evaluate.main(q_aware_model=quantized_model,
+                                                     epochs=self.qat_epochs,
+                                                     bn_freeze=10e1000,
+                                                     batch_size=64,
+                                                     learning_rate=0.001,
+                                                     warmup=0.0,
+                                                     from_checkpoint=self.pretrained_qat_weights_path
+                                                     )
+
+                # calculate size
+                memory = calculate_model_size.calculate_weights_mobilenet_size(quantized_model)
 
             # Create output node
-            node = allconf.copy()
-            node["multconf"] = conf
+            node = node_conf.copy()
+            node["quant_conf"] = quant_conf
             node["accuracy"] = accuracy
-            node["power"] = power
+            node["memory"] = memory
 
-            if not len(cache_sel):
+            if len(cache_sel) == 0:
                 self.cache.append(node)
-                # print(json.dumps(cache)) #, gzip.open("cache.json.gz", "w"))
                 json.dump(self.cache, gzip.open(self.cache_file, "wt", encoding="utf8"))
-
-            if update_node:
-                self.refresh_cache()
 
             yield node
 
     def __str__(self):
         return "cache(%s,%d)" % (self.cache_file, len(self.cache))
+
+    def quantize_model_by_config(self, quant_config):
+        config = [{"weight_bits": quant_config[i], "activation_bits": 8} for i in range(len(quant_config))]
+        return quantize_model(self.base_model, config)
