@@ -8,28 +8,6 @@ import tensorflow as tf
 from datasets import tinyimagenet
 import os
 
-# Script arguments
-parser = argparse.ArgumentParser(
-    prog='mobilenet_tinyimagenet_train',
-    description='Train Mobilenet for ImageNet subset (100 classes only) datasets',
-    epilog='')
-
-parser.add_argument('-e', '--epochs', default=200, type=int)
-parser.add_argument('-b', '--batch-size', default=128, type=int)
-
-parser.add_argument('--learning-rate', '--lr', default=0.045, type=float)
-
-parser.add_argument("--logs-dir", default="logs/tinyimagenet/mobilenet/32bit")
-parser.add_argument("--checkpoints-dir", default="checkpoints/tinyimagenet/mobilenet/32bit")
-
-parser.add_argument('--from-checkpoint', default=None, type=str)
-parser.add_argument('--start-epoch', default=0, type=int)
-parser.add_argument('--save-as', default="mobilenet_tinyimagenet.keras", type=str)
-
-parser.add_argument('--cache', default=True, action='store_true')  # on/off flag
-parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
-parser.add_argument('--metal', default=False, action='store_true')
-
 
 def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_checkpoint, start_epoch, cache, save_as,
          verbose, metal=False):
@@ -46,7 +24,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             print(f'From checkpoint: {from_checkpoint}')
 
     # Create model
-    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.25, weights=None)
+    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=1, weights=None)
 
     if verbose:
         model.summary()
@@ -128,6 +106,28 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
 
 if __name__ == "__main__":
     tf.random.set_seed(30082000)  # Set random seed to have reproducible results
+
+    # Script arguments
+    parser = argparse.ArgumentParser(
+        prog='mobilenet_tinyimagenet_train',
+        description='Train Mobilenet for ImageNet subset (100 classes only) datasets',
+        epilog='')
+
+    parser.add_argument('-e', '--epochs', default=200, type=int)
+    parser.add_argument('-b', '--batch-size', default=128, type=int)
+
+    parser.add_argument('--learning-rate', '--lr', default=0.045, type=float)
+
+    parser.add_argument("--logs-dir", default="logs/tinyimagenet/mobilenet/32bit")
+    parser.add_argument("--checkpoints-dir", default="checkpoints/tinyimagenet/mobilenet/32bit")
+
+    parser.add_argument('--from-checkpoint', default=None, type=str)
+    parser.add_argument('--start-epoch', default=0, type=int)
+    parser.add_argument('--save-as', default="mobilenet_tinyimagenet.keras", type=str)
+
+    parser.add_argument('--cache', default=True, action='store_true')  # on/off flag
+    parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
+    parser.add_argument('--metal', default=False, action='store_true')
 
     args = parser.parse_args()
     main(
