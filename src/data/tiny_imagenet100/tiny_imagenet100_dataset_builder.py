@@ -29,9 +29,10 @@ class Builder(tfds.core.GeneratorBasedBuilder):
     and original validation set for there classes from imagetnet
     """
 
-    VERSION = tfds.core.Version('1.0.0')
+    VERSION = tfds.core.Version('1.0.1')
     RELEASE_NOTES = {
         '1.0.0': 'Initial release.',
+        '1.0.1': 'Fix labels',
     }
 
     MANUAL_DOWNLOAD_INSTRUCTIONS = """\
