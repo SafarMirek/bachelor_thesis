@@ -24,7 +24,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             print(f'From checkpoint: {from_checkpoint}')
 
     # Create model
-    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=1, weights=None)
+    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.25, weights=None)
 
     if verbose:
         model.summary()
@@ -70,8 +70,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
         decay_rate=0.98
     )
 
-    model.compile(optimizer=tf.keras.optimizers.legacy.RMSprop(learning_rate=learning_rate_fn,
-                                                               momentum=0.9),
+    model.compile(optimizer=tf.keras.optimizers.SGD(learning_rate=learning_rate_fn),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 
@@ -125,7 +124,7 @@ if __name__ == "__main__":
     parser.add_argument('--start-epoch', default=0, type=int)
     parser.add_argument('--save-as', default="mobilenet_tinyimagenet.keras", type=str)
 
-    parser.add_argument('--cache', default=True, action='store_true')  # on/off flag
+    parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
     parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
     parser.add_argument('--metal', default=False, action='store_true')
 
