@@ -217,13 +217,6 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
             )
         ]
 
-        print(
-            f'Replacing '
-            f'Conv2D ({conv_layer_node.layer["config"]["name"]}) + BN ({bn_layer_node.layer["config"]["name"]})'
-            f' -> '
-            f'QuantConv2DBN ({conv_bn_layer.name})'
-        )
-
         return relu_layer_node
 
     def replacement(self, match_layer):
@@ -317,13 +310,6 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
                 metadata={}
             )
         ]
-
-        print(
-            f'Replacing '
-            f'DepthwiseConv2D ({conv_layer_node.layer["config"]["name"]}) + BN ({bn_layer_node.layer["config"]["name"]})'
-            f' -> '
-            f'QuantDepthwiseConv2DBN ({conv_bn_layer.name})'
-        )
 
         return relu_layer_node
 
