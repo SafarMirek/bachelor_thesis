@@ -24,7 +24,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             print(f'From checkpoint: {from_checkpoint}')
 
     # Create model
-    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.25, weights=None)
+    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.1, weights=None)
 
     if verbose:
         model.summary()

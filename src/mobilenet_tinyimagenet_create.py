@@ -4,7 +4,7 @@ from keras.applications import MobileNet
 
 
 def load_and_save(weights_path):
-    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=1, weights=None)
+    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.1, weights=None)
     model.load_weights(weights_path)
     model.save("mobilenet_tinyimagenet.keras")
 
