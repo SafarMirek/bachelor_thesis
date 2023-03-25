@@ -1,130 +1,169 @@
-from __future__ import print_function
-
-import keras.models
-from paretoarchive import PyBspTreeArchive
-import json, gzip
+import abc
+import gzip
+import json
+import os
 import random
-import datetime, os
-import argparse
+
 import tensorflow as tf
-
-import calculate_model_size
-from nsga_lib import crowding_reduce, Analyzer
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument(
-    '--logs-dir',
-    type=str,
-    default="/tmp/safarmirek/run" + datetime.datetime.now().strftime("-%Y%m%d-%H%M"),
-    help='Logs dir')
-
-parser.add_argument(
-    '--previous-run',
-    type=str,
-    default="",
-    help='')
-
-parser.add_argument(
-    '--base_model_path',
-    type=str,
-    default="",
-    help='')
-
-parser.add_argument(
-    '--batch-size',
-    type=int,
-    default=1000,
-    help='Number of images in the batch.')
-
-parser.add_argument(
-    '--iterations',
-    type=int,
-    default=10,
-    help='Number of iterations of batches, batch_size * iterations <= data_size; batch_size >> iterations.')
-
-parser.add_argument(
-    '--generations',
-    type=int,
-    default=25,
-    help='Number of images in the batch.')
+from paretoarchive.core import PyBspTreeArchive
 
 
-def make_config(conf):
-    return {"quant_conf": conf}
+class NSGAAnalyzer(abc.ABC):
+
+    @abc.abstractmethod
+    def analyze(self, configurations):
+        """
+
+        :param configurations: List of configurations that needs to be analyzes
+        :return: List of configurations with added evaluation of each one
+        """
+        pass
 
 
-def main(*, logs_dir, base_model_path, quantizable_layers, parent_size=50, offspring_size=50, batch_size=64,
-         qat_epochs=6,
-         generations=25, pretrained_qat_weights_path=None):
-    # Create folder for logs
-    os.makedirs(logs_dir)
+class NSGA(abc.ABC):
+    """
+    Implementation of NSGA algorith
+    """
 
-    base_model = keras.models.load_model(base_model_path)
+    def __init__(self, logs_dir, parent_size=50, offspring_size=50, generations=25, objectives=None):
+        if logs_dir is None:
+            raise ValueError(f"Logs directory needs to be defined")
 
-    maximal = {
-        "accuracy": 1.0,
-        "memory": calculate_model_size.calculate_weights_mobilenet_size(base_model)
-    }
+        if parent_size < 0:
+            raise ValueError(f"Number of parents cannot be negative ({parent_size}<0)")
 
-    analyzer = Analyzer(base_model, batch_size=batch_size, qat_epochs=qat_epochs,
-                        pretrained_qat_weights_path=pretrained_qat_weights_path)
+        if offspring_size < 0:
+            raise ValueError(f"Number of offsprings cannot be negative ({offspring_size}<0)")
 
-    g_last = 0
-    parents = [[i for _ in range(quantizable_layers)] for i in range(2, 9)]
-    next_parent = list(analyzer.analyze([make_config(x) for x in parents]))
+        if generations < 0:
+            raise ValueError(f"Number of generations cannot be negative ({generations}<0)")
 
-    offsprings = []
+        if objectives is None:
+            raise ValueError("Objectives need to be defined")
 
-    for g in range(g_last, generations + 1):
-        print("Generation %d" % g)
-        tf.logging.info("generation:%d;cache=%s" % (g, str(analyzer)))
-        # initial results from previous data:
-        analyzed = list(analyzer.analyze([make_config(x) for x in offsprings]))
+        self.logs_dir = logs_dir
+        self.parent_size = parent_size
+        self.offspring_size = offspring_size
+        self.generations = generations
+        self.objectives = objectives
 
-        json.dump({"parent": next_parent, "offspring": offsprings},
-                  gzip.open(logs_dir + "/run.%05d.json.gz" % g, "wt", encoding="utf8"))
+        self.analyzer = None
 
-        print(len(next_parent))
-        # reduce the number of elements
-        filtered_results = next_parent + analyzed
-        next_parent = []
-        while len(next_parent) < parent_size and len(filtered_results) > 0:
-            pareto = PyBspTreeArchive(2).filter([(-x["accuracy"], x["memory"]) for x in filtered_results],
+        self.ensure_logs_dir()
+
+    def ensure_logs_dir(self):
+        os.makedirs(self.logs_dir)
+
+    def get_pareto_front(self, values):
+
+        def map_obj_list(value):
+            return [value[obj[0]] * (-1 if obj[1] else 1) for obj in self.objectives]
+
+        pareto_ids = PyBspTreeArchive(2).filter([map_obj_list(x) for x in values],
                                                 returnIds=True)
 
-            current_pareto = [filtered_results[i] for i in pareto]
-            missing = parent_size - len(next_parent)
+        return pareto_ids
 
-            if (len(current_pareto) <= missing):
-                next_parent += current_pareto
-            else:  # distance crowding
-                next_parent += crowding_reduce(current_pareto, missing, maximal)
+    def run(self):
+        """
 
-            for i in reversed(sorted(pareto)):
-                filtered_results.pop(i)
+        :return: final parents with their evaluation
+        """
+        start_gen = 0
+        parents = self.get_init_parents()
+        next_parents = list(self.get_analyzer().analyze(parents))
 
-        parent_conf = [x["quant_conf"] for x in next_parent]
-
-        # generate new candidate solutions:
         offsprings = []
-        for i in range(0, offspring_size):
+
+        for g in range(start_gen, self.generations + 1):
+            print("Generation %d" % g)
+            tf.print("generation:%d;cache=%s" % (g, str(self.get_analyzer())))
+            # initial results from previous data:
+            analyzed_offsprings = list(self.get_analyzer().analyze(offsprings))
+
+            json.dump({"parent": parents, "offspring": offsprings},
+                      gzip.open(self.logs_dir + "/run.%05d.json.gz" % g, "wt", encoding="utf8"))
+
+            # reduce the number of elements
+            filtered_results = next_parents + analyzed_offsprings
+            next_parents = []
+            missing = self.parent_size - len(next_parents)
+            while missing > 0 and len(filtered_results) > 0:
+                pareto_ids = self.get_pareto_front(filtered_results)
+                pareto = [filtered_results[i] for i in pareto_ids]
+
+                if len(pareto) <= missing:
+                    next_parents += pareto
+                else:  # distance crowding
+                    next_parents += self.crowding_reduce(pareto, missing)
+
+                for i in reversed(sorted(pareto_ids)):
+                    filtered_results.pop(i)
+
+                missing = self.parent_size - len(next_parents)
+
+            # generate new candidate solutions:
+            offsprings = self.generate_offsprings(parents=next_parents)
+
+    def generate_offsprings(self, *, parents):
+        """
+        :param parents:
+        :return: lists of generates offsprings
+        """
+        offsprings = []
+        for i in range(0, self.offspring_size):
             # select two random parents
-            parent = [random.choice(parent_conf), random.choice(parent_conf)]
-            child = [8 for _ in range(quantizable_layers)]
-            for li in range(quantizable_layers):
-                if random.random() < 0.90:  # 90 % probability of crossover
-                    child[li] = random.choice(parent)[li]
-                else:
-                    child[li] = 8
+            parents = random.choices(parents, k=2)
+            # generate offspring from these two parents
+            offsprings.append(self.crossover(parents))
 
-            if random.random() < 0.1:  # 10 % probability of mutation
-                li = random.choice([x for x in range(quantizable_layers)])
-                child[li] = random.choice([2, 3, 4, 5, 6, 7, 8])
+        return offsprings
 
-            offsprings.append(child)
+    def crowding_distance(self, par):
+        park = list(enumerate(par))
+        distance = [0 for _ in range(len(par))]
+        for obj in self.objectives:
+            sorted_values = sorted(park, key=lambda x: x[1][obj])
+            minval, maxval = 0, self.get_maximal()[obj]
+            distance[sorted_values[0][0]] = float("inf")
+            distance[sorted_values[-1][0]] = float("inf")
 
+            for i in range(1, len(sorted_values) - 1):
+                distance[sorted_values[i][0]] += abs(sorted_values[i - 1][1][obj] - sorted_values[i + 1][1][obj]) / (
+                        maxval - minval)
+        # print(distance)
+        # print(sorted(distance, key=lambda x:-x))
+        return zip(par, distance)
 
-if __name__ == "__main__":
-    args = parser.parse_args()
-    main(**vars(args))
+    def crowding_reduce(self, par, number):
+        par = par
+        while len(par) > number:
+            vals = self.crowding_distance(par)
+            vals = sorted(vals, key=lambda x: -x[1])  # sort by distance descending
+
+            par = [x[0] for x in vals[:-1]]  # remove last
+        return par
+
+    def get_analyzer(self):
+        if self.analyzer is None:
+            self.analyzer = self.init_analyzer()
+        return self.analyzer
+
+    @abc.abstractmethod
+    def crossover(self, parents):
+        """Returns child"""
+        pass
+
+    @abc.abstractmethod
+    def get_maximal(self):
+        """Returns maximal values for objectives"""
+        pass
+
+    @abc.abstractmethod
+    def init_analyzer(self) -> NSGAAnalyzer:
+        """Returns analyzer"""
+        pass
+
+    @abc.abstractmethod
+    def get_init_parents(self):
+        pass
