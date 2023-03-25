@@ -370,3 +370,5 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
         Graph will be same as inference graph
         """
         self._frozen_bn = True
+        self.gamma.trainable = False
+        self.beta.trainable = False
