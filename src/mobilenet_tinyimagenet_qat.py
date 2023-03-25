@@ -6,6 +6,7 @@ from tensorflow import keras
 import tensorflow as tf
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapper
 
+from callbacks import MaxAccuracyCallback
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_model import quantize_model
@@ -70,9 +71,9 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
         return config
 
 
-def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=64, learning_rate=0.001, warmup=0.0,
+def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_rate=0.05, warmup=0.0,
          checkpoints_dir=None, logs_dir=None,
-         cache_dataset=True, from_checkpoint=None, verbose=False):
+         cache_dataset=True, from_checkpoint=None, verbose=False, start_epoch=0):
     if verbose:
         print("Used configuration:")
         print(f'Number of epochs: {epochs}')
@@ -85,10 +86,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=64, learning_ra
         if from_checkpoint is not None:
             print(f'From checkpoint: {from_checkpoint}')
 
-    if args.weight_bits < 2 or args.weight_bits > 8:
-        raise ValueError("Weight bits must be in <2,8> interval.")
-
-    if args.warmup < 0 or args.warmup > 1:
+    if warmup < 0 or warmup > 1:
         raise ValueError("Warmup % must be in <0,1> interval.")
 
     # Load dataset
@@ -130,12 +128,18 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=64, learning_ra
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
 
+    qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
+
     if verbose:
-        qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
         print(f'Top-1 accuracy before QAT (quantized float): {qa_acc * 100:.2f}%')
 
     # Define checkpoint callback for saving model weights after each epoch
     callbacks = []
+    max_accuracy_callback = MaxAccuracyCallback()
+    callbacks.append(max_accuracy_callback)
+
+    max_accuracy_callback.try_new_accuracy(qa_acc)  # Update max accuracy to post-quantized accuracy
+
     if checkpoints_dir is not None:
         checkpoints_dir = os.path.abspath(checkpoints_dir)
         checkpoints_dir = os.path.join(checkpoints_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -163,7 +167,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=64, learning_ra
     # Train with not frozen batch norms
     q_aware_model.fit(train_ds, epochs=not_frozen_epochs, validation_data=test_ds,
                       callbacks=callbacks,
-                      initial_epoch=0)
+                      initial_epoch=start_epoch)
 
     if epochs > bn_freeze:
         # Train with bn frozen
@@ -175,7 +179,8 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=64, learning_ra
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     if verbose:
         print(f'Top-1 accuracy after (quantized float): {qa_acc * 100:.2f}%')
-    return qa_acc
+        print(f'Max accuracy during training was: {max_accuracy_callback.get_max_accuracy() * 100:.2f}%')
+    return max_accuracy_callback.get_max_accuracy()
 
 
 def _freeze_bn_in_model(model):
@@ -234,5 +239,6 @@ if __name__ == "__main__":
         logs_dir=args.logs_dir,
         cache_dataset=args.cache,
         from_checkpoint=args.from_checkpoint,
-        verbose=args.verbose
+        verbose=args.verbose,
+        start_epoch=args.start_epoch
     )
