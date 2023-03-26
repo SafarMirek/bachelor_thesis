@@ -99,8 +99,10 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
         logical_devices = tf.config.list_logical_devices('GPU')
         pool = Pool(processes=len(logical_devices))
 
+        print("Needs eval: " + str(needs_eval) + " on " + str(len(logical_devices)) + " GPUs.")
         results = pool.map(self.get_eval_of_config, needs_eval)
         pool.close()
+        print("Eval done")
 
         for i, quant_conf in enumerate(needs_eval):
             node = {
