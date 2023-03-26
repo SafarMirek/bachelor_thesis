@@ -6,9 +6,11 @@ from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLaye
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 
 
-def calculate_weights_mobilenet_size(model, per_channel=True):
+def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
     size = 0  # Model size in bits
     for layer in model.layers:
+        if only_layers is not None and layer.name not in only_layers:
+            continue
         layer_size = 0
         if isinstance(layer, keras.layers.Dense) or isinstance(layer, keras.layers.Conv2D):
             layer_size = layer_size + 32 * np.prod(layer.kernel.shape)
@@ -64,6 +66,6 @@ def calculate_weights_mobilenet_size(model, per_channel=True):
 
             # add bias size (non quantized) it will be there every time because of batch norm fold
             layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
-        print(f"Layer {layer.name}: {layer_size}")
+        # print(f"Layer {layer.name}: {layer_size}")
         size = size + layer_size
     return size

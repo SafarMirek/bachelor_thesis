@@ -1,8 +1,11 @@
 import abc
+import glob
 import gzip
 import json
 import os
 import random
+import re
+from shutil import copyfile
 
 import tensorflow as tf
 from paretoarchive.core import PyBspTreeArchive
@@ -20,12 +23,51 @@ class NSGAAnalyzer(abc.ABC):
         pass
 
 
+class NSGAState:
+
+    def __init__(self, generation=None, parents=None, offsprings=None):
+        self._generation = generation
+        self._parents = parents
+        self._offsprings = offsprings
+        self._restored = False
+
+    def get_generation(self):
+        return self._generation
+
+    def get_parents(self):
+        return self._parents
+
+    def get_offsprings(self):
+        return self._offsprings
+
+    def save_to(self, logs_dir):
+        if self._restored:
+            return
+        json.dump({"parent": self._parents, "offspring": self._offsprings},
+                  gzip.open(logs_dir + "/run.%05d.json.gz" % self._generation, "wt", encoding="utf8"))
+
+    def set_offsprings(self, new_offsprings):
+        self._offsprings = new_offsprings
+
+    @classmethod
+    def restore_from(cls, run_file: str):
+        print("# loading %s" % run_file)
+        pr = json.load(gzip.open(run_file))
+        parents = pr["parent"]
+        offsprings = pr["offspring"]
+        generation = int(re.match(r".*run\.(\d+).json.gz", run_file).group(1))
+        tf.print(f"Restored generation {generation} with {len(parents)} parents and {len(offsprings)} offsprings")
+        res_state = cls(generation=generation, parents=parents, offsprings=offsprings)
+        res_state._restored = True
+        return res_state
+
+
 class NSGA(abc.ABC):
     """
     Implementation of NSGA algorith
     """
 
-    def __init__(self, logs_dir, parent_size=50, offspring_size=50, generations=25, objectives=None):
+    def __init__(self, logs_dir, parent_size=50, offspring_size=50, generations=25, objectives=None, previous_run=None):
         if logs_dir is None:
             raise ValueError(f"Logs directory needs to be defined")
 
@@ -49,7 +91,21 @@ class NSGA(abc.ABC):
 
         self.analyzer = None
 
+        self.state = None
+        if previous_run is not None:
+            self._restore_state(previous_run)
+
         self.ensure_logs_dir()
+
+    def _restore_state(self, previous_run):
+        df = glob.glob(previous_run + "/run.*.gz")
+        if self.logs_dir != previous_run:
+            for d in df:
+                copyfile(d, self.logs_dir + "/" + os.path.basename(d))
+                print("# file %s copied" % d)
+        df = sorted(df)
+        d = df[-1]
+        self.state = NSGAState.restore_from(run_file=d)
 
     def ensure_logs_dir(self):
         os.makedirs(self.logs_dir)
@@ -64,46 +120,54 @@ class NSGA(abc.ABC):
 
         return pareto_ids
 
+    def get_current_state(self) -> NSGAState:
+        return self.state
+
+    def run_next_generation(self):
+        current_state = self.get_current_state()
+        g = self.get_current_state().get_generation()
+        print("Generation %d" % g)
+        tf.print("generation:%d;cache=%s" % (g, str(self.get_analyzer())))
+        # initial results from previous data:
+        analyzed_offsprings = list(self.get_analyzer().analyze(current_state.get_offsprings()))
+        current_state.set_offsprings(analyzed_offsprings)
+        current_state.save_to(logs_dir=self.logs_dir)
+
+        # reduce the number of elements
+        filtered_results = current_state.get_parents() + current_state.get_offsprings()
+        next_parents = []
+        missing = self.parent_size - len(next_parents)
+        while missing > 0 and len(filtered_results) > 0:
+            pareto_ids = self.get_pareto_front(filtered_results)
+            pareto = [filtered_results[i] for i in pareto_ids]
+
+            if len(pareto) <= missing:
+                next_parents += pareto
+            else:  # distance crowding
+                next_parents += self.crowding_reduce(pareto, missing)
+
+            for i in reversed(sorted(pareto_ids)):
+                filtered_results.pop(i)
+
+            missing = self.parent_size - len(next_parents)
+
+        # generate new candidate solutions:
+        offsprings = self.generate_offsprings(parents=next_parents)
+
+        # set new state
+        self.state = NSGAState(generation=g + 1, parents=next_parents, offsprings=offsprings)
+
     def run(self):
         """
-
         :return: final parents with their evaluation
         """
-        start_gen = 0
-        parents = self.get_init_parents()
-        next_parents = list(self.get_analyzer().analyze(parents))
+        if self.state is None:
+            parents = self.get_init_parents()
+            next_parents = list(self.get_analyzer().analyze(parents))
+            self.state = NSGAState(generation=0, parents=next_parents, offsprings=[])
 
-        offsprings = []
-
-        for g in range(start_gen, self.generations + 1):
-            print("Generation %d" % g)
-            tf.print("generation:%d;cache=%s" % (g, str(self.get_analyzer())))
-            # initial results from previous data:
-            analyzed_offsprings = list(self.get_analyzer().analyze(offsprings))
-
-            json.dump({"parent": parents, "offspring": offsprings},
-                      gzip.open(self.logs_dir + "/run.%05d.json.gz" % g, "wt", encoding="utf8"))
-
-            # reduce the number of elements
-            filtered_results = next_parents + analyzed_offsprings
-            next_parents = []
-            missing = self.parent_size - len(next_parents)
-            while missing > 0 and len(filtered_results) > 0:
-                pareto_ids = self.get_pareto_front(filtered_results)
-                pareto = [filtered_results[i] for i in pareto_ids]
-
-                if len(pareto) <= missing:
-                    next_parents += pareto
-                else:  # distance crowding
-                    next_parents += self.crowding_reduce(pareto, missing)
-
-                for i in reversed(sorted(pareto_ids)):
-                    filtered_results.pop(i)
-
-                missing = self.parent_size - len(next_parents)
-
-            # generate new candidate solutions:
-            offsprings = self.generate_offsprings(parents=next_parents)
+        while self.get_current_state().get_generation() <= self.generations:
+            self.run_next_generation()
 
     def generate_offsprings(self, *, parents):
         """
