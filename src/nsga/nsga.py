@@ -108,7 +108,10 @@ class NSGA(abc.ABC):
         self.state = NSGAState.restore_from(run_file=d)
 
     def ensure_logs_dir(self):
-        os.makedirs(self.logs_dir)
+        try:
+            os.makedirs(self.logs_dir)
+        except FileExistsError:
+            pass  # Folder already exists
 
     def get_pareto_front(self, values):
 
