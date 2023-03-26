@@ -38,8 +38,7 @@ def quantize_model(model, quantization_config):
                 f'({transformer.get_number_of_quantizable_layers()} needed)')
 
         layer_group_map = transformer.get_layers_quantize_group_map()
-        print("Layers map:")
-        print(transformer.get_quantizable_layers_groups())
+
         layer_quantization_config_map = {}
         for layer in layer_group_map.keys():
             layer_quantization_config_map[layer] = quantization_config[layer_group_map[layer]]
