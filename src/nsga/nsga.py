@@ -189,7 +189,7 @@ class NSGA(abc.ABC):
     def crowding_distance(self, par):
         park = list(enumerate(par))
         distance = [0 for _ in range(len(par))]
-        for obj in self.objectives:
+        for obj, asc in self.objectives:
             sorted_values = sorted(park, key=lambda x: x[1][obj])
             minval, maxval = 0, self.get_maximal()[obj]
             distance[sorted_values[0][0]] = float("inf")
