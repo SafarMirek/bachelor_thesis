@@ -180,9 +180,9 @@ class NSGA(abc.ABC):
         offsprings = []
         for i in range(0, self.offspring_size):
             # select two random parents
-            parents = random.choices(parents, k=2)
+            selected_parents = random.sample(parents, k=2)
             # generate offspring from these two parents
-            offsprings.append(self.crossover(parents))
+            offsprings.append(self.crossover(selected_parents))
 
         return offsprings
 
