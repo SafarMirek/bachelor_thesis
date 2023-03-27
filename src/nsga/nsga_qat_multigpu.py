@@ -15,7 +15,7 @@ from nsga.nsga import NSGAAnalyzer
 from tf_quantization.quantize_model import quantize_model
 from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModelTransformer
 
-from multiprocessing import Queue
+from queue import Queue
 
 
 class QATNSGA(nsga.nsga_qat.QATNSGA):
