@@ -2,6 +2,7 @@ import glob
 import gzip
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import keras
 import numpy as np
@@ -14,7 +15,7 @@ from nsga.nsga import NSGAAnalyzer
 from tf_quantization.quantize_model import quantize_model
 from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModelTransformer
 
-from multiprocessing import Pool, current_process, Queue
+from multiprocessing import Queue
 
 
 class QATNSGA(nsga.nsga_qat.QATNSGA):
@@ -97,11 +98,10 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
 
         # Run evaluation for all configurations that needs it
         logical_devices = tf.config.list_logical_devices('GPU')
-        pool = Pool(processes=len(logical_devices))
+        pool = ThreadPoolExecutor(max_workers=len(logical_devices))
 
         print("Needs eval: " + str(needs_eval) + " on " + str(len(logical_devices)) + " GPUs.")
-        results = pool.map(self.get_eval_of_config, needs_eval)
-        pool.close()
+        results = list(pool.map(self.get_eval_of_config, needs_eval))
         print("Eval done")
 
         for i, quant_conf in enumerate(needs_eval):
