@@ -18,7 +18,7 @@ from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModel
 class QATNSGA(NSGA):
 
     def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
-                 qat_epochs=10, previous_run=None):
+                 qat_epochs=10, previous_run=None, cache_datasets=False):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
                          objectives=[("accuracy", True), ("memory", False)], previous_run=previous_run
@@ -26,6 +26,7 @@ class QATNSGA(NSGA):
         self.base_model = base_model
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
+        self.cache_datasets = cache_datasets
 
         self.quantizable_layers = self.get_analyzer().get_quantizable_layers()
 
@@ -36,7 +37,8 @@ class QATNSGA(NSGA):
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
-        return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs, learning_rate=0.2)
+        return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs, learning_rate=0.2,
+                           cache_datasets=self.cache_datasets)
 
     def get_init_parents(self):
         return [{"quant_conf": [i for _ in range(self.quantizable_layers)]} for i in range(2, 9)]
@@ -44,7 +46,7 @@ class QATNSGA(NSGA):
     def crossover(self, parents):
         child_conf = [8 for _ in range(self.quantizable_layers)]
         for li in range(self.quantizable_layers):
-            if random.random() < 0.95:  # 90 % probability of crossover
+            if random.random() < 0.95:  # 95 % probability of crossover
                 child_conf[li] = random.choice(parents)["quant_conf"][li]
             else:
                 child_conf[li] = 8
@@ -57,13 +59,15 @@ class QATNSGA(NSGA):
 
 
 class QATAnalyzer(NSGAAnalyzer):
-    def __init__(self, base_model, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0):
+    def __init__(self, base_model, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
+                 cache_datasets=False):
         self.base_model = base_model
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
         self.bn_freeze = bn_freeze
         self.learning_rate = learning_rate
         self.warmup = warmup
+        self.cache_datasets = cache_datasets
         self._mask = None
 
         self.ensure_cache_folder()

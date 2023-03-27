@@ -21,22 +21,24 @@ from queue import Queue
 class QATNSGA(nsga.nsga_qat.QATNSGA):
 
     def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
-                 qat_epochs=10, previous_run=None):
+                 qat_epochs=10, previous_run=None, cache_datasets=False):
         super().__init__(logs_dir, base_model, parent_size, offspring_size, generations, batch_size, qat_epochs,
-                         previous_run)
+                         previous_run, cache_datasets)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         return MultiGPUQATAnalyzer(batch_size=self.batch_size, qat_epochs=self.qat_epochs,
-                                   learning_rate=0.2)
+                                   learning_rate=0.2, cache_datasets=self.cache_datasets)
 
 
 class MultiGPUQATAnalyzer(NSGAAnalyzer):
-    def __init__(self, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0):
+    def __init__(self, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
+                 cache_datasets=False):
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
         self.bn_freeze = bn_freeze
         self.learning_rate = learning_rate
         self.warmup = warmup
+        self.cache_datasets = cache_datasets
         self._mask = None
         self._queue = None
 
@@ -189,7 +191,7 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
                                                            warmup=self.warmup,
                                                            checkpoints_dir=None,
                                                            logs_dir=None,
-                                                           cache_dataset=False,
+                                                           cache_dataset=self.cache_datasets,
                                                            from_checkpoint=None,
                                                            verbose=False
                                                            )

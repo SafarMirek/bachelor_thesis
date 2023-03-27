@@ -9,11 +9,12 @@ from nsga.nsga_qat_multigpu import QATNSGA
 
 
 def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_size=64, qat_epochs=6, generations=25,
-         previous_run=None):
+         previous_run=None, cache_datasets=False):
     base_model = keras.models.load_model(base_model_path)
 
     nsga = QATNSGA(logs_dir=logs_dir, base_model=base_model, parent_size=parent_size, offspring_size=offspring_size,
-                   batch_size=batch_size, qat_epochs=qat_epochs, generations=generations, previous_run=previous_run)
+                   batch_size=batch_size, qat_epochs=qat_epochs, generations=generations, previous_run=previous_run,
+                   cache_datasets=cache_datasets)
 
     nsga.run()
 
@@ -68,6 +69,12 @@ if __name__ == "__main__":
         type=int,
         default=25,
         help='Number of generations')
+
+    parser.add_argument(
+        '--cache-datasets',
+        default=False,
+        action='store_true',
+        help='Cache datasets during QAT')
 
     args = parser.parse_args()
     main(**vars(args))
