@@ -21,7 +21,6 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
 
             # add bias size (non quantized) it will be there every time because of batch norm fold
             layer_size = layer_size + 32 * (layer.kernel.shape[3])
-            print(f"Layer {layer.name}: {layer_size} (bits: {num_bits_weight}, filter: {np.prod(layer.kernel.shape)})")
         elif isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer):
             num_bits_weight = layer.quantize_num_bits_weight
 
