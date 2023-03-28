@@ -12,7 +12,27 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
         if only_layers is not None and layer.name not in only_layers:
             continue
         layer_size = 0
-        if isinstance(layer, keras.layers.Dense) or isinstance(layer, keras.layers.Conv2D):
+        if isinstance(layer, QuantConv2DBatchLayer):
+            num_bits_weight = layer.quantize_num_bits_weight
+            layer_size = layer_size + num_bits_weight * np.prod(layer.kernel.shape)
+
+            # Quant koeficients
+            layer_size = layer_size + 32 * (layer.kernel.shape[3])
+
+            # add bias size (non quantized) it will be there every time because of batch norm fold
+            layer_size = layer_size + 32 * (layer.kernel.shape[3])
+            print(f"Layer {layer.name}: {layer_size} (bits: {num_bits_weight}, filter: {np.prod(layer.kernel.shape)})")
+        elif isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer):
+            num_bits_weight = layer.quantize_num_bits_weight
+
+            layer_size = layer_size + num_bits_weight * np.prod(layer.depthwise_kernel.shape)
+
+            # Quant koeficients
+            layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
+
+            # add bias size (non quantized) it will be there every time because of batch norm fold
+            layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
+        elif isinstance(layer, keras.layers.Dense) or isinstance(layer, keras.layers.Conv2D):
             layer_size = layer_size + 32 * np.prod(layer.kernel.shape)
 
             if layer.use_bias:
@@ -47,25 +67,5 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
 
                 if layer.layer.use_bias:
                     layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias is not quantized
-        elif isinstance(layer, QuantConv2DBatchLayer):
-            num_bits_weight = layer.quantize_num_bits_weight
-            layer_size = layer_size + num_bits_weight * np.prod(layer.kernel.shape)
-
-            # Quant koeficients
-            layer_size = layer_size + 32 * (layer.kernel.shape[3])
-
-            # add bias size (non quantized) it will be there every time because of batch norm fold
-            layer_size = layer_size + 32 * (layer.kernel.shape[3])
-        elif isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer):
-            num_bits_weight = layer.quantize_num_bits_weight
-
-            layer_size = layer_size + num_bits_weight * np.prod(layer.depthwise_kernel.shape)
-
-            # Quant koeficients
-            layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
-
-            # add bias size (non quantized) it will be there every time because of batch norm fold
-            layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
-        # print(f"Layer {layer.name}: {layer_size}")
         size = size + layer_size
     return size
