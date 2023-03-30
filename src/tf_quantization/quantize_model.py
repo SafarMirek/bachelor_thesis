@@ -2,6 +2,9 @@ from tensorflow_model_optimization.python.core.quantization.keras import quantiz
 from tensorflow_model_optimization.python.core.quantization.keras.quantize import quantize_annotate_model, \
     quantize_apply, quantize_scope
 
+from tf_quantization.layers.pytorch.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.pytorch.quant_depthwise_conv2d_bn_layer import \
+    ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_registry import QuantizeRegistry
@@ -23,14 +26,17 @@ class PerLayerNBitQuantizeScheme(quantize_scheme.QuantizeScheme):
         return self.registry_fn()
 
 
-def quantize_model(model, quantization_config):
+def quantize_model(model, quantization_config, activation_quant_no_affect=False, approx=False):
     # TODO: Implement support for transforms, that changes layers (SeparableConv, etc...)
 
     with quantize_scope({
+        "ApproximateQuantConv2DBatchLayer": ApproximateQuantConv2DBatchLayer,
         "QuantConv2DBatchLayer": QuantConv2DBatchLayer,
         "QuantDepthwiseConv2DBatchNormalizationLayer": QuantDepthwiseConv2DBatchNormalizationLayer,
+        "ApproximateQuantDepthwiseConv2DBatchNormalizationLayer": ApproximateQuantDepthwiseConv2DBatchNormalizationLayer,
+
     }):
-        transformer = PerLayerQuantizeModelTransformer(model, quantization_config, {})
+        transformer = PerLayerQuantizeModelTransformer(model, quantization_config, {}, approx=approx)
 
         if transformer.get_number_of_quantizable_layers() != len(quantization_config):
             raise ValueError(
@@ -43,8 +49,13 @@ def quantize_model(model, quantization_config):
         for layer in layer_group_map.keys():
             layer_quantization_config_map[layer] = quantization_config[layer_group_map[layer]]
 
-        scheme = PerLayerNBitQuantizeScheme(transformer_fn=lambda: PerLayerQuantizeLayoutTransform(quantization_config),
-                                            registry_fn=lambda: QuantizeRegistry(layer_quantization_config_map))
+        scheme = PerLayerNBitQuantizeScheme(
+            transformer_fn=lambda: PerLayerQuantizeLayoutTransform(quantization_config, approx=approx),
+            registry_fn=lambda: QuantizeRegistry(
+                layer_quantization_config_map,
+                activation_quant_no_affect=activation_quant_no_affect
+            )
+        )
 
         annotated_model = quantize_annotate_model(model)
         return quantize_apply(annotated_model, scheme=scheme)

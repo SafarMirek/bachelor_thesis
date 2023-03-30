@@ -1,3 +1,5 @@
+import sys
+
 import tensorflow as tf
 from tensorflow import keras
 
@@ -17,24 +19,29 @@ from tensorflow_model_optimization.python.core.quantization.keras.experimental.d
     default_n_bit_quantizers
 
 
-class QuantConv2DBatchLayer(keras.layers.Conv2D):
+class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
 
-    def __init__(self, filters, kernel_size, strides, padding, data_format, dilation_rate, groups, use_bias,
-                 kernel_initializer, bias_initializer, kernel_regularizer, bias_regularizer, kernel_constraint,
-                 bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
+    def __init__(self, kernel_size, strides, padding, depth_multiplier, data_format, dilation_rate, activation,
+                 use_bias, depthwise_initializer, bias_initializer, depthwise_regularizer, bias_regularizer,
+                 activity_regularizer, depthwise_constraint, bias_constraint,
+                 axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize=True, quantize_num_bits_weight=8,
                  **kwargs):
-        super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
-                         data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
-                         kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
-                         kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
-                         kernel_constraint=kernel_constraint,
+        super().__init__(kernel_size=kernel_size, strides=strides, padding=padding, depth_multiplier=depth_multiplier,
+                         data_format=data_format,
+                         dilation_rate=dilation_rate,
+                         activation=activation,
+                         use_bias=use_bias, depthwise_initializer=depthwise_initializer,
+                         bias_initializer=bias_initializer,
+                         depthwise_regularizer=depthwise_regularizer,
+                         bias_regularizer=bias_regularizer,
+                         activity_regularizer=activity_regularizer, depthwise_constraint=depthwise_constraint,
                          bias_constraint=bias_constraint, **kwargs)
 
         # TODO: I currently do not support more that 1 groups
 
-        # BatchNormalization params
+        # Batch Normalization
         self.axis = axis
         self.momentum = momentum
         self.epsilon = epsilon
@@ -64,14 +71,16 @@ class QuantConv2DBatchLayer(keras.layers.Conv2D):
                 symmetric=True,
                 narrow_range=True
             )
+        # self.weights_quantizer = default_n_bit_quantizers.DefaultNBitConvWeightsQuantizer(
+        #     num_bits_weight=quantize_num_bits_weight
+        # )
         else:
             self.weights_quantizer = None
 
     def build(self, input_shape):
-        super().build(input_shape)
-        self.axis = tf_utils.validate_axis(self.axis, input_shape)
+        keras.layers.DepthwiseConv2D.build(self, input_shape)
 
-        # self.compute_output_shape contains validations for input_shape
+        self.axis = tf_utils.validate_axis(self.axis, input_shape)
         conv_output_shape = self.compute_output_shape(input_shape)
 
         axis_to_dim = {x: conv_output_shape.dims[x].value for x in self.axis}
@@ -155,19 +164,20 @@ class QuantConv2DBatchLayer(keras.layers.Conv2D):
                 self._scope.set_partitioner(partitioner)
 
         if self.weights_quantizer is not None:
-            self._quantizer_weights = self.weights_quantizer.build(self.kernel.shape, "weights", self)
+            channellast_kernel = tf.transpose(self.depthwise_kernel, [0, 1, 3, 2])
+            self._quantizer_weights = self.weights_quantizer.build(channellast_kernel.shape, "weights", self)
 
         self.built = True
-
-    def _get_folded_weights(self, std_dev):
-        gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
-        std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
-        return (gamma / std_dev) * self.kernel
 
     def _reset_folded_weights(self, std_dev, outputs):
         gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
         return (std_dev / gamma) * outputs
+
+    def _get_folded_weights(self, std_dev):
+        gamma = tf.reshape(self.gamma, (1, 1, self.gamma.shape[0], 1))
+        std_dev = tf.reshape(std_dev, (1, 1, std_dev.shape[0], 1))
+        return (gamma / std_dev) * self.depthwise_kernel
 
     def _add_folded_bias(self, outputs, bias, mean, std_dev):
         # TODO: Handle multiple axes batch normalization
@@ -183,39 +193,55 @@ class QuantConv2DBatchLayer(keras.layers.Conv2D):
         if training is None:
             training = tf.keras.backend.learning_phase()
 
-        if self._is_causal:  # Apply causal padding to inputs for Conv1D.
-            inputs = tf.pad(inputs, self._compute_causal_padding(inputs))
-
         if not training:
             moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
             folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
 
             # quantization of weights
             if self.weights_quantizer is not None:
-                folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                                 weights=self._quantizer_weights)
+                # folded_weights_before = folded_weights
+                channellast_folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
+                channellast_folded_weights = self.weights_quantizer.__call__(channellast_folded_weights, training,
+                                                                             weights=self._quantizer_weights)
+                folded_weights = tf.transpose(channellast_folded_weights, [0, 1, 3, 2])
 
-            outputs = self.convolution_op(inputs, folded_weights)
+            outputs = backend.depthwise_conv2d(
+                inputs,
+                folded_weights,
+                strides=self.strides,
+                padding=self.padding,
+                dilation_rate=self.dilation_rate,
+                data_format=self.data_format,
+            )
+
             if self.use_bias:
                 outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
             else:
                 outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
 
-            if not tf.executing_eagerly() and input_shape.rank:
-                # Infer the static output shape:
-                out_shape = self.compute_output_shape(input_shape)
-                outputs.set_shape(out_shape)
+            # TODO: Activation and activation quantization
+            # if self.activation is not None:
+            #    return self.activation(outputs)
 
             return outputs
 
         moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
         folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
-
+        # quantization of weights
         if self.weights_quantizer is not None:
-            folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                             weights=self._quantizer_weights)
+            channellast_folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
+            channellast_folded_weights = self.weights_quantizer.__call__(channellast_folded_weights, training,
+                                                                         weights=self._quantizer_weights)
+            folded_weights = tf.transpose(channellast_folded_weights, [0, 1, 3, 2])
 
-        outputs = self.convolution_op(inputs, folded_weights)
+        outputs = backend.depthwise_conv2d(
+            inputs,
+            folded_weights,
+            strides=self.strides,
+            padding=self.padding,
+            dilation_rate=self.dilation_rate,
+            data_format=self.data_format,
+        )
 
         if self._frozen_bn:
             if self.use_bias:
@@ -224,11 +250,11 @@ class QuantConv2DBatchLayer(keras.layers.Conv2D):
                 outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
             return outputs
 
-        # * ( sqrt(var) / gamma)
+        # * ( std_dev / gamma)
         outputs = self._reset_folded_weights(moving_std_dev, outputs)
 
         if self.use_bias:
-            outputs = tf.nn.bias_add(
+            outputs = backend.bias_add(
                 outputs, self.bias, data_format=self._tf_data_format
             )
 
@@ -290,6 +316,31 @@ class QuantConv2DBatchLayer(keras.layers.Conv2D):
 
         return outputs
 
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "axis": self.axis,
+            "momentum": self.momentum,
+            "epsilon": self.epsilon,
+            "center": self.center,
+            "scale": self.scale,
+            "beta_initializer": initializers.serialize(self.beta_initializer),
+            "gamma_initializer": initializers.serialize(self.gamma_initializer),
+            "moving_mean_initializer": initializers.serialize(
+                self.moving_mean_initializer
+            ),
+            "moving_variance_initializer": initializers.serialize(
+                self.moving_variance_initializer
+            ),
+            "beta_regularizer": regularizers.serialize(self.beta_regularizer),
+            "gamma_regularizer": regularizers.serialize(self.gamma_regularizer),
+            "beta_constraint": constraints.serialize(self.beta_constraint),
+            "gamma_constraint": constraints.serialize(self.gamma_constraint),
+            "quantize": self.quantize,
+            "quantize_num_bits_weight": self.quantize_num_bits_weight
+        }
+        return dict(list(base_config.items()) + list(config.items()))
+
     def _assign_moving_average(self, variable, value, momentum, inputs_size):
         def calculate_update_delta():
             decay = tf.convert_to_tensor(1.0 - momentum, name="decay")
@@ -328,31 +379,6 @@ class QuantConv2DBatchLayer(keras.layers.Conv2D):
             return tf.float32
         else:
             return self.dtype or tf.float32
-
-    def get_config(self):
-        base_config = super().get_config()
-        config = {
-            "axis": self.axis,
-            "momentum": self.momentum,
-            "epsilon": self.epsilon,
-            "center": self.center,
-            "scale": self.scale,
-            "beta_initializer": initializers.serialize(self.beta_initializer),
-            "gamma_initializer": initializers.serialize(self.gamma_initializer),
-            "moving_mean_initializer": initializers.serialize(
-                self.moving_mean_initializer
-            ),
-            "moving_variance_initializer": initializers.serialize(
-                self.moving_variance_initializer
-            ),
-            "beta_regularizer": regularizers.serialize(self.beta_regularizer),
-            "gamma_regularizer": regularizers.serialize(self.gamma_regularizer),
-            "beta_constraint": constraints.serialize(self.beta_constraint),
-            "gamma_constraint": constraints.serialize(self.gamma_constraint),
-            "quantize": self.quantize,
-            "quantize_num_bits_weight": self.quantize_num_bits_weight
-        }
-        return dict(list(base_config.items()) + list(config.items()))
 
     def freeze_bn(self):
         """

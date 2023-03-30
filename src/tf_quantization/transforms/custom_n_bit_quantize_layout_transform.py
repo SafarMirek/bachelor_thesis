@@ -28,6 +28,9 @@ from tensorflow_model_optimization.python.core.quantization.keras.experimental.d
 from tensorflow_model_optimization.python.core.quantization.keras.graph_transformations import model_transformer
 from tensorflow_model_optimization.python.core.quantization.keras.graph_transformations import transforms
 
+from tf_quantization.layers.pytorch.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.pytorch.quant_depthwise_conv2d_bn_layer import \
+    ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 
@@ -40,10 +43,11 @@ class CustomNBitQuantizeLayoutTransform(
     quantize_layout_transform.QuantizeLayoutTransform):
     """Default model transformations."""
 
-    def __init__(self, only_layers, num_bits_weight: int = 8, num_bits_activation: int = 8):
+    def __init__(self, only_layers, num_bits_weight: int = 8, num_bits_activation: int = 8, approx=False):
         self.only_layers = only_layers
         self._num_bits_weight = num_bits_weight
         self._num_bits_activation = num_bits_activation
+        self._approx = approx
 
     def apply(self, model, layer_quantize_map):
         """Implement default 8-bit transforms.
@@ -67,10 +71,14 @@ class CustomNBitQuantizeLayoutTransform(
         transforms = [
             DepthwiseConv2DBatchNormReluQuantize(
                 num_bits_weight=self._num_bits_weight,
-                num_bits_activation=self._num_bits_activation),
+                num_bits_activation=self._num_bits_activation,
+                approx=self._approx
+            ),
             Conv2DBatchNormReluQuantize(
                 num_bits_weight=self._num_bits_weight,
-                num_bits_activation=self._num_bits_activation),
+                num_bits_activation=self._num_bits_activation,
+                approx=self._approx
+            ),
             default_n_bit_transforms.InputLayerQuantize(
                 num_bits_weight=self._num_bits_weight,
                 num_bits_activation=self._num_bits_activation),
@@ -136,9 +144,10 @@ class CustomNBitQuantizeLayoutTransform(
 
 class Conv2DBatchNormReluQuantize(transforms.Transform):
 
-    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8):
+    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False):
         self.num_bits_weight = num_bits_weight
         self.num_bits_activation = num_bits_activation
+        self.approx = approx
 
     def pattern(self):
         return LayerPattern(
@@ -153,38 +162,72 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
                 relu_layer_node, bn_layer_node, conv_layer_node):
             return relu_layer_node
 
-        conv_bn_layer = QuantConv2DBatchLayer(
-            name=conv_layer_node.layer['config']['name'] + "_bnfolded",
-            filters=conv_layer_node.layer['config']['filters'],
-            kernel_size=conv_layer_node.layer['config']['kernel_size'],
-            strides=conv_layer_node.layer['config']['strides'],
-            padding=conv_layer_node.layer['config']['padding'],
-            data_format=conv_layer_node.layer['config']['data_format'],
-            dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
-            groups=conv_layer_node.layer['config']['groups'],
-            use_bias=conv_layer_node.layer['config']['use_bias'],
-            kernel_initializer=conv_layer_node.layer['config']['kernel_initializer'],
-            bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
-            kernel_regularizer=conv_layer_node.layer['config']['kernel_regularizer'],
-            bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
-            kernel_constraint=conv_layer_node.layer['config']['kernel_constraint'],
-            bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
-            axis=bn_layer_node.layer['config']['axis'],
-            momentum=bn_layer_node.layer['config']['momentum'],
-            epsilon=bn_layer_node.layer['config']['epsilon'],
-            center=bn_layer_node.layer['config']['center'],
-            scale=bn_layer_node.layer['config']['scale'],
-            beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
-            gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
-            moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
-            moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
-            beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
-            gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
-            beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
-            gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
-            quantize=True,
-            quantize_num_bits_weight=self.num_bits_weight
-        )
+        if self.approx:
+            conv_bn_layer = ApproximateQuantConv2DBatchLayer(
+                name=conv_layer_node.layer['config']['name'] + "_bnfolded",
+                filters=conv_layer_node.layer['config']['filters'],
+                kernel_size=conv_layer_node.layer['config']['kernel_size'],
+                strides=conv_layer_node.layer['config']['strides'],
+                padding=conv_layer_node.layer['config']['padding'],
+                data_format=conv_layer_node.layer['config']['data_format'],
+                dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
+                groups=conv_layer_node.layer['config']['groups'],
+                use_bias=conv_layer_node.layer['config']['use_bias'],
+                kernel_initializer=conv_layer_node.layer['config']['kernel_initializer'],
+                bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
+                kernel_regularizer=conv_layer_node.layer['config']['kernel_regularizer'],
+                bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
+                kernel_constraint=conv_layer_node.layer['config']['kernel_constraint'],
+                bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
+                axis=bn_layer_node.layer['config']['axis'],
+                momentum=bn_layer_node.layer['config']['momentum'],
+                epsilon=bn_layer_node.layer['config']['epsilon'],
+                center=bn_layer_node.layer['config']['center'],
+                scale=bn_layer_node.layer['config']['scale'],
+                beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
+                gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
+                moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
+                moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
+                beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
+                gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
+                beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
+                gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
+                quantize=True,
+                quantize_num_bits_weight=self.num_bits_weight
+            )
+        else:
+            conv_bn_layer = QuantConv2DBatchLayer(
+                name=conv_layer_node.layer['config']['name'] + "_bnfolded",
+                filters=conv_layer_node.layer['config']['filters'],
+                kernel_size=conv_layer_node.layer['config']['kernel_size'],
+                strides=conv_layer_node.layer['config']['strides'],
+                padding=conv_layer_node.layer['config']['padding'],
+                data_format=conv_layer_node.layer['config']['data_format'],
+                dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
+                groups=conv_layer_node.layer['config']['groups'],
+                use_bias=conv_layer_node.layer['config']['use_bias'],
+                kernel_initializer=conv_layer_node.layer['config']['kernel_initializer'],
+                bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
+                kernel_regularizer=conv_layer_node.layer['config']['kernel_regularizer'],
+                bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
+                kernel_constraint=conv_layer_node.layer['config']['kernel_constraint'],
+                bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
+                axis=bn_layer_node.layer['config']['axis'],
+                momentum=bn_layer_node.layer['config']['momentum'],
+                epsilon=bn_layer_node.layer['config']['epsilon'],
+                center=bn_layer_node.layer['config']['center'],
+                scale=bn_layer_node.layer['config']['scale'],
+                beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
+                gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
+                moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
+                moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
+                beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
+                gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
+                beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
+                gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
+                quantize=True,
+                quantize_num_bits_weight=self.num_bits_weight
+            )
 
         conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)
         conv_bn_layer_config['name'] = conv_bn_layer.name
@@ -229,9 +272,10 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
 
 class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
 
-    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8):
+    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False):
         self.num_bits_weight = num_bits_weight
         self.num_bits_activation = num_bits_activation
+        self.approx = approx
 
     def pattern(self):
         return LayerPattern(
@@ -246,39 +290,74 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
                 relu_layer_node, bn_layer_node, conv_layer_node):
             return relu_layer_node
 
-        conv_bn_layer = QuantDepthwiseConv2DBatchNormalizationLayer(
-            name=conv_layer_node.layer['config']['name'] + "_bnfolded",
-            kernel_size=conv_layer_node.layer['config']['kernel_size'],
-            strides=conv_layer_node.layer['config']['strides'],
-            padding=conv_layer_node.layer['config']['padding'],
-            depth_multiplier=conv_layer_node.layer['config']['depth_multiplier'],
-            data_format=conv_layer_node.layer['config']['data_format'],
-            dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
-            activation=conv_layer_node.layer['config']['activation'],
-            use_bias=conv_layer_node.layer['config']['use_bias'],
-            depthwise_initializer=conv_layer_node.layer['config']['depthwise_initializer'],
-            bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
-            depthwise_regularizer=conv_layer_node.layer['config']['depthwise_regularizer'],
-            bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
-            activity_regularizer=conv_layer_node.layer['config']['activity_regularizer'],
-            depthwise_constraint=conv_layer_node.layer['config']['depthwise_constraint'],
-            bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
-            axis=bn_layer_node.layer['config']['axis'],
-            momentum=bn_layer_node.layer['config']['momentum'],
-            epsilon=bn_layer_node.layer['config']['epsilon'],
-            center=bn_layer_node.layer['config']['center'],
-            scale=bn_layer_node.layer['config']['scale'],
-            beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
-            gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
-            moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
-            moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
-            beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
-            gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
-            beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
-            gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
-            quantize=True,
-            quantize_num_bits_weight=self.num_bits_weight
-        )
+        if self.approx:
+            conv_bn_layer = ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(
+                name=conv_layer_node.layer['config']['name'] + "_bnfolded",
+                kernel_size=conv_layer_node.layer['config']['kernel_size'],
+                strides=conv_layer_node.layer['config']['strides'],
+                padding=conv_layer_node.layer['config']['padding'],
+                depth_multiplier=conv_layer_node.layer['config']['depth_multiplier'],
+                data_format=conv_layer_node.layer['config']['data_format'],
+                dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
+                activation=conv_layer_node.layer['config']['activation'],
+                use_bias=conv_layer_node.layer['config']['use_bias'],
+                depthwise_initializer=conv_layer_node.layer['config']['depthwise_initializer'],
+                bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
+                depthwise_regularizer=conv_layer_node.layer['config']['depthwise_regularizer'],
+                bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
+                activity_regularizer=conv_layer_node.layer['config']['activity_regularizer'],
+                depthwise_constraint=conv_layer_node.layer['config']['depthwise_constraint'],
+                bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
+                axis=bn_layer_node.layer['config']['axis'],
+                momentum=bn_layer_node.layer['config']['momentum'],
+                epsilon=bn_layer_node.layer['config']['epsilon'],
+                center=bn_layer_node.layer['config']['center'],
+                scale=bn_layer_node.layer['config']['scale'],
+                beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
+                gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
+                moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
+                moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
+                beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
+                gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
+                beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
+                gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
+                quantize=True,
+                quantize_num_bits_weight=self.num_bits_weight
+            )
+        else:
+            conv_bn_layer = QuantDepthwiseConv2DBatchNormalizationLayer(
+                name=conv_layer_node.layer['config']['name'] + "_bnfolded",
+                kernel_size=conv_layer_node.layer['config']['kernel_size'],
+                strides=conv_layer_node.layer['config']['strides'],
+                padding=conv_layer_node.layer['config']['padding'],
+                depth_multiplier=conv_layer_node.layer['config']['depth_multiplier'],
+                data_format=conv_layer_node.layer['config']['data_format'],
+                dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
+                activation=conv_layer_node.layer['config']['activation'],
+                use_bias=conv_layer_node.layer['config']['use_bias'],
+                depthwise_initializer=conv_layer_node.layer['config']['depthwise_initializer'],
+                bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
+                depthwise_regularizer=conv_layer_node.layer['config']['depthwise_regularizer'],
+                bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
+                activity_regularizer=conv_layer_node.layer['config']['activity_regularizer'],
+                depthwise_constraint=conv_layer_node.layer['config']['depthwise_constraint'],
+                bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
+                axis=bn_layer_node.layer['config']['axis'],
+                momentum=bn_layer_node.layer['config']['momentum'],
+                epsilon=bn_layer_node.layer['config']['epsilon'],
+                center=bn_layer_node.layer['config']['center'],
+                scale=bn_layer_node.layer['config']['scale'],
+                beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
+                gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
+                moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
+                moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
+                beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
+                gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
+                beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
+                gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
+                quantize=True,
+                quantize_num_bits_weight=self.num_bits_weight
+            )
 
         conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)
         conv_bn_layer_config['name'] = conv_bn_layer.name

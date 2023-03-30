@@ -1,5 +1,6 @@
 import warnings
 
+import tensorflow as tf
 from tensorflow import keras
 import keras.layers
 
@@ -15,7 +16,7 @@ DefaultNBitQuantizeRegistry = tfmot.quantization.keras.experimental.default_n_bi
 
 class QuantizeRegistry(quantize_registry.QuantizeRegistry):
 
-    def __init__(self, quantization_config):
+    def __init__(self, quantization_config, activation_quant_no_affect=False):
         self._quantization_config = quantization_config
         self.registries = [
             [
@@ -24,6 +25,7 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
             ]
             for w in range(8)
         ]
+        self.activation_quant_no_affect = activation_quant_no_affect
 
     def get_quantize_config(self, layer: keras.layers.Layer):
         num_weight_bits = 8
@@ -36,9 +38,13 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
             warnings.warn(f'No configuration found for {layer.name}. Using 8 bit default quantization')
 
         if isinstance(layer, keras.layers.ReLU):
-            return CustomNBitQuantizeConfig([], [], True, keras.initializers.Constant(0.0),
-                                            keras.initializers.Constant(6.0), num_bits_weight=num_weight_bits,
-                                            num_bits_activation=num_activation_bits)
+            return CustomNBitQuantizeConfig([], [], True,
+                                            keras.initializers.Constant(0.0),
+                                            keras.initializers.Constant(6.0),
+                                            num_bits_weight=num_weight_bits,
+                                            num_bits_activation=num_activation_bits,
+                                            activation_quant_no_affect=self.activation_quant_no_affect
+                                            )
 
         # if isinstance(layer, keras.layers.GlobalAveragePooling2D):
         #    return CustomNBitQuantizeConfig([], [], True, keras.initializers.Constant(0.0),
@@ -49,7 +55,8 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
                 min_initializer=keras.initializers.Constant(-16.0),
                 max_initializer=keras.initializers.Constant(16.0),
                 num_bits_weight=num_weight_bits,
-                num_bits_activation=num_activation_bits
+                num_bits_activation=num_activation_bits,
+                activation_quant_no_affect=self.activation_quant_no_affect
             )
 
         return self.registries[num_weight_bits - 1][num_activation_bits - 1].get_quantize_config(layer)
@@ -59,26 +66,29 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
 
 
 class CustomNBitConvQuantizeConfig(DefaultNBitConvQuantizeConfig):
-    def __init__(self, min_initializer, max_initializer, num_bits_weight: int = 8, num_bits_activation: int = 8):
+    def __init__(self, min_initializer, max_initializer, num_bits_weight: int = 8, num_bits_activation: int = 8,
+                 activation_quant_no_affect=False):
         super().__init__(
             ['kernel'], ['activation'], False,
             num_bits_weight=num_bits_weight,
             num_bits_activation=num_bits_activation)
         self.activation_quantizer = CustomMovingAverageQuantizer(
             num_bits=num_bits_activation, per_axis=False,
-            symmetric=False, narrow_range=False, min_initializer=min_initializer, max_initializer=max_initializer)
+            symmetric=False, narrow_range=False, min_initializer=min_initializer, max_initializer=max_initializer,
+            no_affect=activation_quant_no_affect)
 
 
 class CustomNBitQuantizeConfig(QuantizeConfig):
     """QuantizeConfig for non recurrent Keras layers."""
 
     def __init__(self, weight_attrs, activation_attrs, quantize_output, min_initializer, max_initializer,
-                 num_bits_weight: int = 8, num_bits_activation: int = 8):
+                 num_bits_weight: int = 8, num_bits_activation: int = 8, activation_quant_no_affect=False):
         self.weight_attrs = weight_attrs
         self.activation_attrs = activation_attrs
         self.quantize_output = quantize_output
         self._num_bits_weight = num_bits_weight
         self._num_bits_activation = num_bits_activation
+        self._activation_quant_no_affect = activation_quant_no_affect
 
         # TODO(pulkitb): For some layers such as Conv2D, per_axis should be True.
         # Add mapping for which layers support per_axis.
@@ -88,7 +98,7 @@ class CustomNBitQuantizeConfig(QuantizeConfig):
         self.activation_quantizer = CustomMovingAverageQuantizer(
             num_bits=num_bits_activation, per_axis=False,
             symmetric=False, narrow_range=False, min_initializer=min_initializer,
-            max_initializer=max_initializer)  # activation/output
+            max_initializer=max_initializer, no_affect=activation_quant_no_affect)  # activation/output
 
     def get_weights_and_quantizers(self, layer):
         return [(getattr(layer, weight_attr), self.weight_quantizer)
@@ -159,7 +169,7 @@ class CustomNBitQuantizeConfig(QuantizeConfig):
 class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
     """Quantize tensor based on a moving average of values across batches."""
 
-    def __init__(self, num_bits, per_axis, symmetric, narrow_range, min_initializer, max_initializer):
+    def __init__(self, num_bits, per_axis, symmetric, narrow_range, min_initializer, max_initializer, no_affect=False):
         """Construct a MovingAverageQuantizer.
 
         This is an experimental API not subject to backward compatibility.
@@ -180,6 +190,7 @@ class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
         self.narrow_range = narrow_range
         self.min_initializer = min_initializer
         self.max_initializer = max_initializer
+        self.no_affect = no_affect
 
     def build(self, tensor_shape, name, layer):
         shape = None
@@ -212,7 +223,7 @@ class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
         Returns:
           Quantized tensor.
         """
-        return quant_ops.MovingAvgQuantize(
+        quant_inputs = quant_ops.MovingAvgQuantize(
             inputs,
             weights['min_var'],
             weights['max_var'],
@@ -223,6 +234,10 @@ class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
             symmetric=self.symmetric,
             narrow_range=self.narrow_range,
         )
+        if self.no_affect:
+            return inputs
+        else:
+            return quant_inputs
 
     def get_config(self):
         return {

@@ -73,7 +73,7 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
 
 def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_rate=0.05, warmup=0.0,
          checkpoints_dir=None, logs_dir=None,
-         cache_dataset=True, from_checkpoint=None, verbose=False, start_epoch=0):
+         cache_dataset=True, from_checkpoint=None, verbose=False, start_epoch=0, activation_quant_wait=0):
     if verbose:
         print("Used configuration:")
         print(f'Number of epochs: {epochs}')
@@ -88,6 +88,9 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
 
     if warmup < 0 or warmup > 1:
         raise ValueError("Warmup % must be in <0,1> interval.")
+
+    if bn_freeze < activation_quant_wait:
+        raise ValueError("BN Freeze before activation quant is not supported")
 
     # Load dataset
     tr_ds = tinyimagenet.get_tinyimagenet_dataset(split="train")
@@ -116,7 +119,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
     schedule = WarmUpCosineDecay(target_lr=learning_rate, warmup_steps=warmup_steps, total_steps=total_steps,
                                  hold=warmup_steps)
 
-    if not from_checkpoint:
+    if not from_checkpoint and activation_quant_wait == 0:
         q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
                               loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                               metrics=['accuracy'])
@@ -128,17 +131,13 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
 
-    qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
-
-    if verbose:
-        print(f'Top-1 accuracy before QAT (quantized float): {qa_acc * 100:.2f}%')
+    if activation_quant_wait > 0:
+        _set_act_quant_no_affect(q_aware_model, True)
 
     # Define checkpoint callback for saving model weights after each epoch
     callbacks = []
     max_accuracy_callback = MaxAccuracyCallback()
     callbacks.append(max_accuracy_callback)
-
-    max_accuracy_callback.try_new_accuracy(qa_acc)  # Update max accuracy to post-quantized accuracy
 
     if checkpoints_dir is not None:
         checkpoints_dir = os.path.abspath(checkpoints_dir)
@@ -162,12 +161,21 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
         tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logs_dir)
         callbacks.append(tensorboard_callback)
 
+    dis_act_quant_epochs = min(epochs, activation_quant_wait)
     not_frozen_epochs = min(epochs, bn_freeze)
 
     # Train with not frozen batch norms
-    q_aware_model.fit(train_ds, epochs=not_frozen_epochs, validation_data=test_ds,
+    q_aware_model.fit(train_ds, epochs=dis_act_quant_epochs, validation_data=test_ds,
                       callbacks=callbacks,
                       initial_epoch=start_epoch)
+
+    if epochs > activation_quant_wait:
+        # Train with bn frozen
+        _set_act_quant_no_affect(q_aware_model, False)
+        # Train with not frozen batch norms
+        q_aware_model.fit(train_ds, epochs=not_frozen_epochs, validation_data=test_ds,
+                          callbacks=callbacks,
+                          initial_epoch=dis_act_quant_epochs)
 
     if epochs > bn_freeze:
         # Train with bn frozen
@@ -194,6 +202,14 @@ def _freeze_bn_in_model(model):
                 layer.training = False
 
 
+def _set_act_quant_no_affect(model, value):
+    for layer in model.layers:
+        if isinstance(layer, QuantizeWrapper):
+            if hasattr(layer.quantize_config, "activation_quantizer"):
+                if hasattr(layer.quantize_config.activation_quantizer, "no_affect"):
+                    layer.quantize_config.activation_quantizer.no_affect = value
+
+
 if __name__ == "__main__":
     tf.random.set_seed(30082000)  # Set random seed to have reproducible results
 
@@ -205,6 +221,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-e', '--epochs', default=50, type=int)
     parser.add_argument('--bn-freeze', default=25, type=int)
+    parser.add_argument('--act-quant-wait', default=3, type=int)
     parser.add_argument('-b', '--batch-size', default=128, type=int)
 
     parser.add_argument('--weight-bits', '--wb', default=8, type=int)
@@ -221,12 +238,13 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
     parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
     parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet.keras", type=str)
+    parser.add_argument('--approx', default=False, action='store_true')
 
     args = parser.parse_args()
     model = keras.models.load_model(args.mobilenet_path)
 
     quant_layer_conf = {"weight_bits": args.weight_bits, "activation_bits": 8}
-    q_aware_model = quantize_model(model, [quant_layer_conf for _ in range(37)])
+    q_aware_model = quantize_model(model, [quant_layer_conf for _ in range(37)], approx=args.approx)
 
     main(
         q_aware_model=q_aware_model,
@@ -240,5 +258,6 @@ if __name__ == "__main__":
         cache_dataset=args.cache,
         from_checkpoint=args.from_checkpoint,
         verbose=args.verbose,
-        start_epoch=args.start_epoch
+        start_epoch=args.start_epoch,
+        activation_quant_wait=args.act_quant_wait
     )

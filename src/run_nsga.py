@@ -9,12 +9,12 @@ from nsga.nsga_qat import QATNSGA
 
 
 def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_size=64, qat_epochs=6, generations=25,
-         previous_run=None, cache_datasets=False):
+         previous_run=None, cache_datasets=False, approx=False):
     base_model = keras.models.load_model(base_model_path)
 
     nsga = QATNSGA(logs_dir=logs_dir, base_model=base_model, parent_size=parent_size, offspring_size=offspring_size,
                    batch_size=batch_size, qat_epochs=qat_epochs, generations=generations, previous_run=previous_run,
-                   cache_datasets=cache_datasets)
+                   cache_datasets=cache_datasets, approx=approx)
 
     nsga.run()
 
@@ -75,6 +75,8 @@ if __name__ == "__main__":
         default=False,
         action='store_true',
         help='Cache datasets during QAT')
+
+    parser.add_argument('--approx', default=False, action='store_true')
 
     args = parser.parse_args()
     main(**vars(args))

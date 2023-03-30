@@ -21,24 +21,27 @@ from queue import Queue
 class QATNSGA(nsga.nsga_qat.QATNSGA):
 
     def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
-                 qat_epochs=10, previous_run=None, cache_datasets=False):
+                 qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0):
         super().__init__(logs_dir, base_model, parent_size, offspring_size, generations, batch_size, qat_epochs,
-                         previous_run, cache_datasets)
+                         previous_run, cache_datasets, approx, activation_quant_wait)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         return MultiGPUQATAnalyzer(batch_size=self.batch_size, qat_epochs=self.qat_epochs,
-                                   learning_rate=0.2, cache_datasets=self.cache_datasets)
+                                   learning_rate=0.2, cache_datasets=self.cache_datasets,
+                                   approx=self.approx, activation_quant_wait=self.activation_quant_wait)
 
 
 class MultiGPUQATAnalyzer(NSGAAnalyzer):
     def __init__(self, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
-                 cache_datasets=False):
+                 cache_datasets=False, approx=False, activation_quant_wait=0):
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
         self.bn_freeze = bn_freeze
         self.learning_rate = learning_rate
         self.warmup = warmup
         self.cache_datasets = cache_datasets
+        self.approx = approx
+        self.activation_quant_wait = activation_quant_wait
         self._mask = None
         self._queue = None
 
@@ -174,7 +177,7 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
         final_quant_config = [quant_config[i - 1] for i in self.mask]
         config = [{"weight_bits": final_quant_config[i], "activation_bits": 8} for i in range(len(self.mask))]
         base_model = keras.models.load_model("mobilenet_tinyimagenet.keras")
-        return quantize_model(base_model, config)
+        return quantize_model(base_model, config, approx=self.approx)
 
     def get_eval_of_config(self, quant_config):
         device = self.queue.get()
@@ -193,7 +196,8 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
                                                            logs_dir=None,
                                                            cache_dataset=self.cache_datasets,
                                                            from_checkpoint=None,
-                                                           verbose=False
+                                                           verbose=False,
+                                                           activation_quant_wait=self.activation_quant_wait
                                                            )
                 # calculate size
                 memory = calculate_model_size.calculate_weights_mobilenet_size(quantized_model)
