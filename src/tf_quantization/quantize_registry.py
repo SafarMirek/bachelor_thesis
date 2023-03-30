@@ -234,7 +234,7 @@ class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
             symmetric=self.symmetric,
             narrow_range=self.narrow_range,
         )
-        if self.no_affect:
+        if self.no_affect and training:
             return inputs
         else:
             return quant_inputs
