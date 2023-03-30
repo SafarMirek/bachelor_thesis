@@ -181,7 +181,7 @@ class QATAnalyzer(NSGAAnalyzer):
         return self._mask
 
     def _get_quantizable_layers_mask(self):
-        transformer = PerLayerQuantizeModelTransformer(self.base_model, [], {})
+        transformer = PerLayerQuantizeModelTransformer(self.base_model, [], {}, approx=self.approx)
 
         groups = transformer.get_quantizable_layers_groups()
         mask = [0 for _ in range(len(groups))]

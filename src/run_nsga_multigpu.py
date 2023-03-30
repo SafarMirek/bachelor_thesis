@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import argparse
 import datetime
 
@@ -9,12 +7,12 @@ from nsga.nsga_qat_multigpu import QATNSGA
 
 
 def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_size=64, qat_epochs=6, generations=25,
-         previous_run=None, cache_datasets=False, approx=False):
+         previous_run=None, cache_datasets=False, approx=False, act_quant_wait=0):
     base_model = keras.models.load_model(base_model_path)
 
     nsga = QATNSGA(logs_dir=logs_dir, base_model=base_model, parent_size=parent_size, offspring_size=offspring_size,
                    batch_size=batch_size, qat_epochs=qat_epochs, generations=generations, previous_run=previous_run,
-                   cache_datasets=cache_datasets, approx=approx)
+                   cache_datasets=cache_datasets, approx=approx, activation_quant_wait=act_quant_wait)
 
     nsga.run()
 
@@ -62,6 +60,12 @@ if __name__ == "__main__":
         '--qat-epochs',
         type=int,
         default=10,
+        help='Number of QAT epochs on the model for the accuracy eval during NSGA')
+
+    parser.add_argument(
+        '--act-quant-wait',
+        type=int,
+        default=0,
         help='Number of QAT epochs on the model for the accuracy eval during NSGA')
 
     parser.add_argument(

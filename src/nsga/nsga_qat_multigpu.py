@@ -159,7 +159,7 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
 
     def _get_quantizable_layers_mask(self):
         base_model = keras.models.load_model("mobilenet_tinyimagenet.keras")
-        transformer = PerLayerQuantizeModelTransformer(base_model, [], {})
+        transformer = PerLayerQuantizeModelTransformer(base_model, [], {}, approx=self.approx)
 
         groups = transformer.get_quantizable_layers_groups()
         mask = [0 for _ in range(len(groups))]
