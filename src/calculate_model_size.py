@@ -2,6 +2,9 @@ import keras.layers
 import numpy as np
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapperV2
 
+from tf_quantization.layers.pytorch.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.pytorch.quant_depthwise_conv2d_bn_layer import \
+    ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 
@@ -12,7 +15,7 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
         if only_layers is not None and layer.name not in only_layers:
             continue
         layer_size = 0
-        if isinstance(layer, QuantConv2DBatchLayer):
+        if isinstance(layer, QuantConv2DBatchLayer) or isinstance(layer, ApproximateQuantConv2DBatchLayer):
             num_bits_weight = layer.quantize_num_bits_weight
             layer_size = layer_size + num_bits_weight * np.prod(layer.kernel.shape)
 
@@ -21,7 +24,10 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
 
             # add bias size (non quantized) it will be there every time because of batch norm fold
             layer_size = layer_size + 32 * (layer.kernel.shape[3])
-        elif isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer):
+        elif (
+                isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproximateQuantDepthwiseConv2DBatchNormalizationLayer)
+        ):
             num_bits_weight = layer.quantize_num_bits_weight
 
             layer_size = layer_size + num_bits_weight * np.prod(layer.depthwise_kernel.shape)
