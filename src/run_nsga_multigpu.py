@@ -10,6 +10,8 @@ def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_
          previous_run=None, cache_datasets=False, approx=False, act_quant_wait=0, per_channel=True, symmetric=True):
     base_model = keras.models.load_model(base_model_path)
 
+    print("Initializing QAT NSGA-II MultiGPU")
+
     nsga = QATNSGA(logs_dir=logs_dir, base_model=base_model, parent_size=parent_size, offspring_size=offspring_size,
                    batch_size=batch_size, qat_epochs=qat_epochs, generations=generations, previous_run=previous_run,
                    cache_datasets=cache_datasets, approx=approx, activation_quant_wait=act_quant_wait,
