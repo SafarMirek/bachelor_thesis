@@ -26,7 +26,8 @@ class PerLayerNBitQuantizeScheme(quantize_scheme.QuantizeScheme):
         return self.registry_fn()
 
 
-def quantize_model(model, quantization_config, activation_quant_no_affect=False, approx=False):
+def quantize_model(model, quantization_config, activation_quant_no_affect=False, approx=False, per_channel=True,
+                   symmetric=True):
     # TODO: Implement support for transforms, that changes layers (SeparableConv, etc...)
 
     with quantize_scope({
@@ -36,7 +37,8 @@ def quantize_model(model, quantization_config, activation_quant_no_affect=False,
         "ApproximateQuantDepthwiseConv2DBatchNormalizationLayer": ApproximateQuantDepthwiseConv2DBatchNormalizationLayer,
 
     }):
-        transformer = PerLayerQuantizeModelTransformer(model, quantization_config, {}, approx=approx)
+        transformer = PerLayerQuantizeModelTransformer(model, quantization_config, {}, approx=approx,
+                                                       symmetric=symmetric, per_channel=per_channel)
 
         if transformer.get_number_of_quantizable_layers() != len(quantization_config):
             raise ValueError(
@@ -50,10 +52,13 @@ def quantize_model(model, quantization_config, activation_quant_no_affect=False,
             layer_quantization_config_map[layer] = quantization_config[layer_group_map[layer]]
 
         scheme = PerLayerNBitQuantizeScheme(
-            transformer_fn=lambda: PerLayerQuantizeLayoutTransform(quantization_config, approx=approx),
+            transformer_fn=lambda: PerLayerQuantizeLayoutTransform(quantization_config, approx=approx,
+                                                                   symmetric=symmetric, per_channel=per_channel),
             registry_fn=lambda: QuantizeRegistry(
                 layer_quantization_config_map,
-                activation_quant_no_affect=activation_quant_no_affect
+                activation_quant_no_affect=activation_quant_no_affect,
+                symmetric=symmetric,
+                per_channel=per_channel
             )
         )
 

@@ -21,19 +21,21 @@ from queue import Queue
 class QATNSGA(nsga.nsga_qat.QATNSGA):
 
     def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
-                 qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0):
+                 qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
+                 per_channel=True, symmetric=True):
         super().__init__(logs_dir, base_model, parent_size, offspring_size, generations, batch_size, qat_epochs,
-                         previous_run, cache_datasets, approx, activation_quant_wait)
+                         previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         return MultiGPUQATAnalyzer(batch_size=self.batch_size, qat_epochs=self.qat_epochs,
                                    learning_rate=0.2, cache_datasets=self.cache_datasets,
-                                   approx=self.approx, activation_quant_wait=self.activation_quant_wait)
+                                   approx=self.approx, activation_quant_wait=self.activation_quant_wait,
+                                   per_channel=self.per_channel, symmetric=self.symmetric)
 
 
 class MultiGPUQATAnalyzer(NSGAAnalyzer):
     def __init__(self, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
-                 cache_datasets=False, approx=False, activation_quant_wait=0):
+                 cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True):
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
         self.bn_freeze = bn_freeze
@@ -42,6 +44,8 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
         self.cache_datasets = cache_datasets
         self.approx = approx
         self.activation_quant_wait = activation_quant_wait
+        self.per_channel = per_channel
+        self.symmetric = symmetric
         self._mask = None
         self._queue = None
 
@@ -159,7 +163,9 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
 
     def _get_quantizable_layers_mask(self):
         base_model = keras.models.load_model("mobilenet_tinyimagenet.keras")
-        transformer = PerLayerQuantizeModelTransformer(base_model, [], {}, approx=self.approx)
+        transformer = PerLayerQuantizeModelTransformer(base_model, [], {}, approx=self.approx,
+                                                       per_channel=self.per_channel,
+                                                       symmetric=self.symmetric)
 
         groups = transformer.get_quantizable_layers_groups()
         mask = [0 for _ in range(len(groups))]
@@ -177,7 +183,8 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
         final_quant_config = [quant_config[i - 1] for i in self.mask]
         config = [{"weight_bits": final_quant_config[i], "activation_bits": 8} for i in range(len(self.mask))]
         base_model = keras.models.load_model("mobilenet_tinyimagenet.keras")
-        return quantize_model(base_model, config, approx=self.approx)
+        return quantize_model(base_model, config, approx=self.approx, per_channel=self.per_channel,
+                              symmetric=self.symmetric)
 
     def get_eval_of_config(self, quant_config):
         device = self.queue.get()

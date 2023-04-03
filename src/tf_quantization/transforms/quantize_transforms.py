@@ -11,20 +11,22 @@ from tf_quantization.transforms import custom_n_bit_quantize_layout_transform
 class PerLayerQuantizeLayoutTransform(
     quantize_layout_transform.QuantizeLayoutTransform):
 
-    def __init__(self, quantize_config, approx):
+    def __init__(self, quantize_config, approx, per_channel, symmetric):
         self._quantize_config = quantize_config
         self._approx = approx
+        self._per_channel = per_channel
+        self._symmetric = symmetric
 
     def apply(self, model, layer_quantize_map):
         return PerLayerQuantizeModelTransformer(model, self._quantize_config, layer_quantize_map,
-                                                self._approx).transform()
+                                                self._approx, self._per_channel, self._symmetric).transform()
 
 
 class PerLayerQuantizeModelTransformer:
     _layers_groups = []
     _layers_group_index_map = {}
 
-    def __init__(self, model, quantize_config, layer_quantize_map, approx):
+    def __init__(self, model, quantize_config, layer_quantize_map, approx, per_channel, symmetric):
         # Taken from https://github.com/tensorflow/model-optimization
         if not self._is_sequential_or_functional_model(model):
             raise ValueError(
@@ -34,6 +36,8 @@ class PerLayerQuantizeModelTransformer:
         self._quantize_config = quantize_config
         self._layer_quantize_map = layer_quantize_map
         self._approx = approx
+        self._per_channel = per_channel
+        self._symmetric = symmetric
         self._do_quantization_split()
 
     @staticmethod
@@ -235,7 +239,9 @@ class PerLayerQuantizeModelTransformer:
                 group,
                 num_bits_weight=self._quantize_config[i]["weight_bits"],
                 num_bits_activation=self._quantize_config[i]["activation_bits"],
-                approx=self._approx
+                approx=self._approx,
+                per_channel=self._per_channel,
+                symmetric=self._symmetric
             )
             # layer_quantize_map gets modified by the transformations.
             transformed_model, layer_quantize_map = quantize_transform.apply(

@@ -239,12 +239,15 @@ if __name__ == "__main__":
     parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
     parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet.keras", type=str)
     parser.add_argument('--approx', default=False, action='store_true')
+    parser.add_argument('--per-channel', default=False, action='store_true')
+    parser.add_argument('--symmetric', default=False, action='store_true')
 
     args = parser.parse_args()
     model = keras.models.load_model(args.mobilenet_path)
 
     quant_layer_conf = {"weight_bits": args.weight_bits, "activation_bits": 8}
-    q_aware_model = quantize_model(model, [quant_layer_conf for _ in range(37)], approx=args.approx)
+    q_aware_model = quantize_model(model, [quant_layer_conf for _ in range(37)], approx=args.approx,
+                                   per_channel=args.per_channel, symmetric=args.symmetric)
 
     main(
         q_aware_model=q_aware_model,
