@@ -13,14 +13,19 @@ from nsga.nsga_qat import QATAnalyzer
 from nsga.nsga_qat_multigpu import MultiGPUQATAnalyzer
 
 
-def main(output_file, run, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, mobilenet_path, multigpu):
+def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_wait, learning_rate, warmup,
+         mobilenet_path, multigpu, approx, per_channel, symmetric):
     if multigpu:
         analyzer = MultiGPUQATAnalyzer(batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
-                                       learning_rate=learning_rate, warmup=warmup)
+                                       learning_rate=learning_rate, warmup=warmup,
+                                       activation_quant_wait=activation_quant_wait,
+                                       approx=approx, per_channel=per_channel, symmetric=symmetric)
     else:
         base_model = keras.models.load_model(mobilenet_path)
         analyzer = QATAnalyzer(base_model, batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
-                               learning_rate=learning_rate, warmup=warmup)
+                               learning_rate=learning_rate, warmup=warmup,
+                               activation_quant_wait=activation_quant_wait,
+                               approx=approx, per_channel=per_channel, symmetric=symmetric)
 
     if output_file is None:
         output_file = os.path.join(os.path.dirname(run), "eval." + str(os.path.basename(run)))
@@ -56,17 +61,23 @@ if __name__ == "__main__":
 
     parser.add_argument('-e', '--epochs', default=100, type=int)
     parser.add_argument('-b', '--batch-size', default=256, type=int)
-    parser.add_argument('--bn-freeze', default=25, type=int)
+    parser.add_argument('--bn-freeze', default=60, type=int)
+    parser.add_argument('--act-quant-wait', default=40, type=int)
 
-    parser.add_argument('--learning-rate', '--lr', default=0.05, type=float)
+    parser.add_argument('--learning-rate', '--lr', default=0.2, type=float)
     parser.add_argument('--warmup', default=0.05, type=float)
 
     parser.add_argument('--multigpu', default=False, action='store_true')
     parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet.keras", type=str)
 
+    parser.add_argument('--approx', default=False, action='store_true')
+    parser.add_argument('--per-channel', default=False, action='store_true')
+    parser.add_argument('--symmetric', default=False, action='store_true')
+
     args = parser.parse_args()
 
     main(output_file=args.output_file,
          run=args.run, batch_size=args.batch_size, qat_epochs=args.epochs,
-         bn_freeze=args.bn_freeze, learning_rate=args.learning_rate,
-         warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu)
+         bn_freeze=args.bn_freeze, activation_quant_wait=args.act_quant_wait, learning_rate=args.learning_rate,
+         warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu, approx=args.approx,
+         per_channel=args.per_channel, symmetric=args.symmetric)
