@@ -30,3 +30,33 @@ def ResNet8(
         classes,
         **kwargs,
     )
+
+
+def ResNet18(
+        input_tensor=None,
+        input_shape=None,
+        pooling=None,
+        classes=1000,
+        **kwargs,
+):
+    """Instantiates the ResNet50 architecture."""
+
+    def stack_fn(x):
+        x = stack1(x, 64, 2, stride1=1, name="conv2")
+        x = stack1(x, 128, 2, name="conv3")
+        x = stack1(x, 256, 2, name="conv4")
+        return stack1(x, 512, 2, name="conv5")
+
+    return ResNet(
+        stack_fn,
+        False,
+        True,
+        "resnet8",
+        True,
+        None,
+        input_tensor,
+        input_shape,
+        pooling,
+        classes,
+        **kwargs,
+    )

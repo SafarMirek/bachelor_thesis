@@ -2,33 +2,34 @@ import argparse
 from abc import ABC
 from datetime import datetime
 
-from keras.layers.preprocessing.image_preprocessing import HORIZONTAL_AND_VERTICAL
+from keras.applications import MobileNet
 from tensorflow import keras
 import tensorflow as tf
+from tensorflow.python.data import AUTOTUNE
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapper
 
-from resnet_models import ResNet8
-from datasets import cifar10
+from resnet_models import ResNet8, ResNet18
+from datasets import cifar100
 import os
 import numpy as np
 
 # Script arguments
 parser = argparse.ArgumentParser(
-    prog='resnet8_cifar10_train',
-    description='Train resnet8 for cifar10 datasets',
+    prog='resnet18_cifar100_train',
+    description='Train resnet18 for cifar100 datasets',
     epilog='')
 
 parser.add_argument('-e', '--epochs', default=200, type=int)
-parser.add_argument('-b', '--batch-size', default=64, type=int)
+parser.add_argument('-b', '--batch-size', default=128, type=int)
 
 parser.add_argument('--learning-rate', '--lr', default=0.1, type=float)
 
-parser.add_argument("--logs-dir", default="logs/cifar10/resnet8/32bit")
-parser.add_argument("--checkpoints-dir", default="checkpoints/cifar10/resnet8/32bit")
+parser.add_argument("--logs-dir", default="logs/cifar100/resnet8/32bit")
+parser.add_argument("--checkpoints-dir", default="checkpoints/cifar100/resnet8/32bit")
 
 parser.add_argument('--from-checkpoint', default=None, type=str)
 parser.add_argument('--start-epoch', default=0, type=int)
-parser.add_argument('--save-as', default="resnet8.keras", type=str)
+parser.add_argument('--save-as', default="resnet8_cifar100.keras", type=str)
 
 parser.add_argument('--cache', default=True, action='store_true')  # on/off flag
 parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
@@ -49,21 +50,21 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             print(f'From checkpoint: {from_checkpoint}')
 
     # Create model
-    model = ResNet8(input_shape=(32, 32, 3), classes=10)
+    model = ResNet8(input_shape=(32, 32, 3), classes=100)
 
     if verbose:
         model.summary()
 
     # Load dataset
-    tr_ds = cifar10.get_imagenet_mini_dataset(split="train")
-    tr_ds = tr_ds.map(cifar10.get_preprocess_image_fn(image_size=(32, 32)))
+    tr_ds = cifar100.get_imagenet_mini_dataset(split="train")
+    tr_ds = tr_ds.map(cifar100.get_preprocess_image_fn(image_size=(32, 32)))
 
     if cache:
         tr_ds = tr_ds.cache()
 
     data_augmentation = tf.keras.Sequential([
-        keras.layers.RandomFlip(HORIZONTAL_AND_VERTICAL),
-        keras.layers.RandomRotation(0.1),
+        keras.layers.RandomFlip("horizontal"),
+        keras.layers.RandomRotation(0.08),
     ])
 
     def augment(x):
@@ -72,25 +73,26 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             return out
 
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
-    train_ds = train_ds.shuffle(int(0.5 * len(train_ds)), reshuffle_each_iteration=True) \
+    train_ds = train_ds.shuffle(int(0.5 * len(train_ds))) \
         .map(lambda x, y: (augment(x), y)) \
         .batch(batch_size) \
         .prefetch(100)
 
-    ds = cifar10.get_imagenet_mini_dataset(split="test")
-    ds = ds.map(cifar10.get_preprocess_image_fn(image_size=(32, 32)))
+    ds = cifar100.get_imagenet_mini_dataset(split="test")
+    ds = ds.map(cifar100.get_preprocess_image_fn(image_size=(32, 32)))
 
     if cache:
         ds = ds.cache()
 
     test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(batch_size)
 
-    boundaries = [40 * len(train_ds), 70 * len(train_ds), 120 * len(train_ds)]
-    values = [learning_rate * x for x in [1, 0.1, 0.01, 0.002]]
+    boundaries = [60 * len(train_ds), 120 * len(train_ds), 160 * len(train_ds)]
+    values = [learning_rate * x for x in [1, 0.2, 0.04, 0.008]]
     learning_rate_fn = keras.optimizers.schedules.PiecewiseConstantDecay(
         boundaries, values)
 
-    model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn, momentum=0.9),
+    model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn, momentum=0.9, nesterov=True,
+                                                           decay=5e-4),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 
@@ -124,7 +126,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
 
 
 def restore_model_from_checkpoint(from_checkpoint):
-    model = ResNet8(input_shape=(32, 32, 3), classes=10)
+    model = ResNet18(input_shape=(32, 32, 3), classes=100)
     model.load_weights(from_checkpoint)
     return model
 

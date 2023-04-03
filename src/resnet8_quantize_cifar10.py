@@ -6,7 +6,7 @@ from tensorflow import keras
 import tensorflow as tf
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapper
 
-from resnet8_model import ResNet8
+from resnet_models import ResNet8
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_model import quantize_model
@@ -219,7 +219,7 @@ def main():
                           initial_epoch=args.bn_freeze)
 
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
-    print(f'Top-1 accuracy after (quantize aware float): {qa_acc * 100:.2f}%')
+    print(f'Top-1 accuracy after (quantized float ({args.weight_bits} bit)): {qa_acc * 100:.2f}%')
 
 
 def freeze_bn(model):
