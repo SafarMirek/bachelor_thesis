@@ -70,7 +70,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
         decay_rate=0.98
     )
 
-    model.compile(optimizer=tf.keras.optimizers.SGD(learning_rate=learning_rate_fn),
+    model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 

@@ -1,4 +1,4 @@
-# Author: ANDREW TU
+# Author: ANDREW TU, Edited by Miroslav Safar
 # From https://www.kaggle.com/code/tusonggao/create-imagenet-train-subset-100k
 import os
 import time
