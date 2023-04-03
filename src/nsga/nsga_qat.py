@@ -85,7 +85,10 @@ class QATAnalyzer(NSGAAnalyzer):
         # Current cache file
         i = 0
         while True:
-            self.cache_file = "cache/%s_%d_%d_%d.json.gz" % ("mobilenet", batch_size, qat_epochs, i)
+            self.cache_file = "cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_%d.json.gz" % (
+                "mobilenet", batch_size, qat_epochs, bn_freeze, learning_rate, warmup, activation_quant_wait, approx,
+                per_channel, symmetric,
+                i)
             if not os.path.isfile(self.cache_file):
                 break
             i += 1
@@ -100,7 +103,10 @@ class QATAnalyzer(NSGAAnalyzer):
             os.makedirs("cache")
 
     def load_cache(self):
-        for fn in glob.glob("cache/%s_%d_%d_*.json.gz" % ("mobilenet", self.batch_size, self.qat_epochs)):
+        for fn in glob.glob("cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_*.json.gz" % (
+                "mobilenet", self.batch_size, self.qat_epochs, self.bn_freeze, self.learning_rate, self.warmup,
+                self.activation_quant_wait, self.approx,
+                self.per_channel, self.symmetric)):
             if fn == self.cache_file:
                 continue
             print("cache open", fn)
