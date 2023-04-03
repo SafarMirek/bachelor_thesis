@@ -35,7 +35,8 @@ class QATNSGA(nsga.nsga_qat.QATNSGA):
 
 class MultiGPUQATAnalyzer(NSGAAnalyzer):
     def __init__(self, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
-                 cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True):
+                 cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
+                 logs_dir_pattern=None, checkpoints_dir_pattern=None):
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
         self.bn_freeze = bn_freeze
@@ -46,6 +47,8 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
         self.activation_quant_wait = activation_quant_wait
         self.per_channel = per_channel
         self.symmetric = symmetric
+        self.logs_dir_pattern = logs_dir_pattern
+        self.checkpoints_dir_pattern = checkpoints_dir_pattern
         self._mask = None
         self._queue = None
 
@@ -201,18 +204,27 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
             with tf.device(device.name):
                 quantized_model = self.quantize_model_by_config(quant_config)
 
+                checkpoints_dir = None
+                if self.checkpoints_dir_pattern is not None:
+                    checkpoints_dir = self.checkpoints_dir_pattern % '_'.join(map(lambda x: str(x), quant_config))
+
+                logs_dir = None
+                if self.logs_dir_pattern is not None:
+                    logs_dir = self.logs_dir_pattern % '_'.join(map(lambda x: str(x), quant_config))
+
                 accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
                                                            epochs=self.qat_epochs,
                                                            bn_freeze=self.bn_freeze,
                                                            batch_size=self.batch_size,
                                                            learning_rate=self.learning_rate,
                                                            warmup=self.warmup,
-                                                           checkpoints_dir=None,
-                                                           logs_dir=None,
+                                                           checkpoints_dir=checkpoints_dir,
+                                                           logs_dir=logs_dir,
                                                            cache_dataset=self.cache_datasets,
                                                            from_checkpoint=None,
                                                            verbose=False,
-                                                           activation_quant_wait=self.activation_quant_wait
+                                                           activation_quant_wait=self.activation_quant_wait,
+                                                           save_best_only=True
                                                            )
                 # calculate size
                 memory = calculate_model_size.calculate_weights_mobilenet_size(quantized_model,

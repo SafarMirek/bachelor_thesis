@@ -73,7 +73,8 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
 
 def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_rate=0.05, warmup=0.0,
          checkpoints_dir=None, logs_dir=None,
-         cache_dataset=True, from_checkpoint=None, verbose=False, start_epoch=0, activation_quant_wait=0):
+         cache_dataset=True, from_checkpoint=None, verbose=False, start_epoch=0, activation_quant_wait=0,
+         save_best_only=False):
     if verbose:
         print("Used configuration:")
         print(f'Number of epochs: {epochs}')
@@ -149,7 +150,8 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
             filepath=checkpoint_filepath,
             save_weights_only=True,
             monitor='val_accuracy',
-            mode="max"
+            mode="max",
+            save_best_only=save_best_only
         )
         callbacks.append(model_checkpoint_callback)
 
