@@ -2,8 +2,8 @@ import keras.layers
 import numpy as np
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapperV2
 
-from tf_quantization.layers.pytorch.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
-from tf_quantization.layers.pytorch.quant_depthwise_conv2d_bn_layer import \
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
     ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer

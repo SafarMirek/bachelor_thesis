@@ -27,7 +27,7 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
                  axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize=True, quantize_num_bits_weight=8,
-                 **kwargs):
+                 per_channel=True, symmetric=True, **kwargs):
         super().__init__(kernel_size=kernel_size, strides=strides, padding=padding, depth_multiplier=depth_multiplier,
                          data_format=data_format,
                          dilation_rate=dilation_rate,
@@ -59,6 +59,8 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
         self.gamma_constraint = constraints.get(gamma_constraint)
         self.quantize = quantize
         self.quantize_num_bits_weight = quantize_num_bits_weight
+        self.per_channel = per_channel
+        self.symmetric = symmetric
 
         self._frozen_bn = False
 
@@ -67,8 +69,8 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
         if quantize:
             self.weights_quantizer = quantizers.LastValueQuantizer(
                 num_bits=quantize_num_bits_weight,
-                per_axis=True,
-                symmetric=True,
+                per_axis=self.per_channel,
+                symmetric=self.symmetric,
                 narrow_range=True
             )
         # self.weights_quantizer = default_n_bit_quantizers.DefaultNBitConvWeightsQuantizer(
@@ -170,8 +172,8 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
         self.built = True
 
     def _reset_folded_weights(self, std_dev, outputs):
-        gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
-        std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
+        gamma = tf.reshape(self.gamma, (1, 1, self.gamma.shape[0], 1))
+        std_dev = tf.reshape(std_dev, (1, 1, std_dev.shape[0], 1))
         return (std_dev / gamma) * outputs
 
     def _get_folded_weights(self, std_dev):

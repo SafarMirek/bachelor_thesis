@@ -27,7 +27,7 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
                  axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize=True, quantize_num_bits_weight=8,
-                 **kwargs):
+                 symmetric=True, **kwargs):
         super().__init__(kernel_size=kernel_size, strides=strides, padding=padding, depth_multiplier=depth_multiplier,
                          data_format=data_format,
                          dilation_rate=dilation_rate,
@@ -57,6 +57,7 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
         self.gamma_constraint = constraints.get(gamma_constraint)
         self.quantize = quantize
         self.quantize_num_bits_weight = quantize_num_bits_weight
+        self.symmetric = symmetric
 
         # TODO: I currently do not support more that 1 groups
 
@@ -67,8 +68,8 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
         if quantize:
             self.weights_quantizer = quantizers.LastValueQuantizer(
                 num_bits=quantize_num_bits_weight,
-                per_axis=True,
-                symmetric=True,
+                per_axis=False,
+                symmetric=self.symmetric,
                 narrow_range=True
             )
         else:

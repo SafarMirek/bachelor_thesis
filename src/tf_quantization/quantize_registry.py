@@ -7,16 +7,17 @@ import keras.layers
 import tensorflow_model_optimization as tfmot
 from tensorflow_model_optimization.python.core.quantization.keras import quantize_registry, quantizers, quant_ops
 from tensorflow_model_optimization.python.core.quantization.keras.experimental.default_n_bit.default_n_bit_quantize_registry import \
-    DefaultNBitConvQuantizeConfig
+    DefaultNBitConvQuantizeConfig, DefaultNBitQuantizeConfig
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_config import QuantizeConfig
-from tensorflow_model_optimization.python.core.quantization.keras.quantizers import _QuantizeHelper, Quantizer
+from tensorflow_model_optimization.python.core.quantization.keras.quantizers import _QuantizeHelper, Quantizer, \
+    LastValueQuantizer
 
 DefaultNBitQuantizeRegistry = tfmot.quantization.keras.experimental.default_n_bit.DefaultNBitQuantizeRegistry
 
 
 class QuantizeRegistry(quantize_registry.QuantizeRegistry):
 
-    def __init__(self, quantization_config, activation_quant_no_affect=False):
+    def __init__(self, quantization_config, activation_quant_no_affect=False, per_channel=True, symmetric=True):
         self._quantization_config = quantization_config
         self.registries = [
             [
@@ -26,6 +27,8 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
             for w in range(8)
         ]
         self.activation_quant_no_affect = activation_quant_no_affect
+        self.per_channel = per_channel
+        self.symmetric = symmetric
 
     def get_quantize_config(self, layer: keras.layers.Layer):
         num_weight_bits = 8
@@ -46,17 +49,15 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
                                             activation_quant_no_affect=self.activation_quant_no_affect
                                             )
 
-        # if isinstance(layer, keras.layers.GlobalAveragePooling2D):
-        #    return CustomNBitQuantizeConfig([], [], True, keras.initializers.Constant(0.0),
-        #                                    keras.initializers.Constant(6.0))
-
         if isinstance(layer, keras.layers.Conv2D):
             return CustomNBitConvQuantizeConfig(
-                min_initializer=keras.initializers.Constant(-16.0),
-                max_initializer=keras.initializers.Constant(16.0),
+                min_initializer=keras.initializers.Constant(-6.0),
+                max_initializer=keras.initializers.Constant(6.0),
                 num_bits_weight=num_weight_bits,
                 num_bits_activation=num_activation_bits,
-                activation_quant_no_affect=self.activation_quant_no_affect
+                activation_quant_no_affect=self.activation_quant_no_affect,
+                per_axis=self.per_channel,
+                symmetric=self.symmetric
             )
 
         return self.registries[num_weight_bits - 1][num_activation_bits - 1].get_quantize_config(layer)
@@ -65,13 +66,19 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
         return self.registries[8 - 1][8 - 1].supports(layer)
 
 
-class CustomNBitConvQuantizeConfig(DefaultNBitConvQuantizeConfig):
+class CustomNBitConvQuantizeConfig(DefaultNBitQuantizeConfig):
     def __init__(self, min_initializer, max_initializer, num_bits_weight: int = 8, num_bits_activation: int = 8,
-                 activation_quant_no_affect=False):
+                 activation_quant_no_affect=False, symmetric=True, per_axis=True):
         super().__init__(
             ['kernel'], ['activation'], False,
             num_bits_weight=num_bits_weight,
             num_bits_activation=num_bits_activation)
+        self.weight_quantizer = LastValueQuantizer(
+            num_bits=num_bits_weight,
+            per_axis=per_axis,
+            symmetric=symmetric,
+            narrow_range=True
+        )
         self.activation_quantizer = CustomMovingAverageQuantizer(
             num_bits=num_bits_activation, per_axis=False,
             symmetric=False, narrow_range=False, min_initializer=min_initializer, max_initializer=max_initializer,

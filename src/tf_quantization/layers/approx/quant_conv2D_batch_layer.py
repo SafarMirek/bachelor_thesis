@@ -18,7 +18,7 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
                  bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize=True, quantize_num_bits_weight=8,
-                 **kwargs):
+                 per_channel=True, symmetric=True, **kwargs):
         super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
                          data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
                          kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
@@ -46,6 +46,8 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
         self.gamma_constraint = constraints.get(gamma_constraint)
         self.quantize = quantize
         self.quantize_num_bits_weight = quantize_num_bits_weight
+        self.per_channel = per_channel
+        self.symmetric = symmetric
 
         self._frozen_bn = False
 
@@ -55,8 +57,8 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
         if quantize:
             self.weights_quantizer = quantizers.LastValueQuantizer(
                 num_bits=quantize_num_bits_weight,
-                per_axis=True,
-                symmetric=True,
+                per_axis=self.per_channel,
+                symmetric=self.symmetric,
                 narrow_range=True
             )
         else:

@@ -28,8 +28,8 @@ from tensorflow_model_optimization.python.core.quantization.keras.experimental.d
 from tensorflow_model_optimization.python.core.quantization.keras.graph_transformations import model_transformer
 from tensorflow_model_optimization.python.core.quantization.keras.graph_transformations import transforms
 
-from tf_quantization.layers.pytorch.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
-from tf_quantization.layers.pytorch.quant_depthwise_conv2d_bn_layer import \
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
     ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
@@ -43,11 +43,17 @@ class CustomNBitQuantizeLayoutTransform(
     quantize_layout_transform.QuantizeLayoutTransform):
     """Default model transformations."""
 
-    def __init__(self, only_layers, num_bits_weight: int = 8, num_bits_activation: int = 8, approx=False):
+    def __init__(self, only_layers, num_bits_weight: int = 8, num_bits_activation: int = 8, approx=False,
+                 symmetric=True, per_channel=True):
         self.only_layers = only_layers
         self._num_bits_weight = num_bits_weight
         self._num_bits_activation = num_bits_activation
         self._approx = approx
+        self._symmetric = symmetric
+        self._per_channel = per_channel
+
+        if self._per_channel and not self._approx:
+            raise ValueError("It does not make sense to use not approx scheme with per_channel quantization")
 
     def apply(self, model, layer_quantize_map):
         """Implement default 8-bit transforms.
@@ -72,12 +78,16 @@ class CustomNBitQuantizeLayoutTransform(
             DepthwiseConv2DBatchNormReluQuantize(
                 num_bits_weight=self._num_bits_weight,
                 num_bits_activation=self._num_bits_activation,
-                approx=self._approx
+                approx=self._approx,
+                symmetric=self._symmetric,
+                per_channel=self._per_channel
             ),
             Conv2DBatchNormReluQuantize(
                 num_bits_weight=self._num_bits_weight,
                 num_bits_activation=self._num_bits_activation,
-                approx=self._approx
+                approx=self._approx,
+                symmetric=self._symmetric,
+                per_channel=self._per_channel
             ),
             default_n_bit_transforms.InputLayerQuantize(
                 num_bits_weight=self._num_bits_weight,
@@ -144,10 +154,13 @@ class CustomNBitQuantizeLayoutTransform(
 
 class Conv2DBatchNormReluQuantize(transforms.Transform):
 
-    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False):
+    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False,
+                 symmetric: bool = True, per_channel: bool = True):
         self.num_bits_weight = num_bits_weight
         self.num_bits_activation = num_bits_activation
         self.approx = approx
+        self.symmetric = symmetric
+        self.per_channel = per_channel
 
     def pattern(self):
         return LayerPattern(
@@ -193,7 +206,9 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
                 beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
                 gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
                 quantize=True,
-                quantize_num_bits_weight=self.num_bits_weight
+                quantize_num_bits_weight=self.num_bits_weight,
+                symmetric=self.symmetric,
+                per_channel=self.per_channel
             )
         else:
             conv_bn_layer = QuantConv2DBatchLayer(
@@ -226,7 +241,9 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
                 beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
                 gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
                 quantize=True,
-                quantize_num_bits_weight=self.num_bits_weight
+                quantize_num_bits_weight=self.num_bits_weight,
+                symmetric=self.symmetric,
+                per_channel=self.per_channel
             )
 
         conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)
@@ -247,9 +264,6 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
 
         conv_bn_layer_weights['moving_mean:0'] = bn_layer_weights['moving_mean:0']
         conv_bn_layer_weights['moving_variance:0'] = bn_layer_weights['moving_variance:0']
-
-        if conv_bn_layer.quantize:
-            pass  # TODO: Do i need to initialize weights for quantizer?
 
         relu_layer_node.input_layers = [
             LayerNode(
@@ -272,10 +286,13 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
 
 class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
 
-    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False):
+    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False,
+                 symmetric: bool = True, per_channel: bool = True):
         self.num_bits_weight = num_bits_weight
         self.num_bits_activation = num_bits_activation
         self.approx = approx
+        self.symmetric = symmetric
+        self.per_channel = per_channel
 
     def pattern(self):
         return LayerPattern(
@@ -322,7 +339,9 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
                 beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
                 gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
                 quantize=True,
-                quantize_num_bits_weight=self.num_bits_weight
+                quantize_num_bits_weight=self.num_bits_weight,
+                symmetric=self.symmetric,
+                per_channel=self.per_channel
             )
         else:
             conv_bn_layer = QuantDepthwiseConv2DBatchNormalizationLayer(
@@ -356,7 +375,9 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
                 beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
                 gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
                 quantize=True,
-                quantize_num_bits_weight=self.num_bits_weight
+                quantize_num_bits_weight=self.num_bits_weight,
+                symmetric=self.symmetric,
+                per_channel=self.per_channel
             )
 
         conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)
@@ -377,9 +398,6 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
 
         conv_bn_layer_weights['moving_mean:0'] = bn_layer_weights['moving_mean:0']
         conv_bn_layer_weights['moving_variance:0'] = bn_layer_weights['moving_variance:0']
-
-        if conv_bn_layer.quantize:
-            pass  # TODO: Do i need to initialize weights for quantizer?
 
         relu_layer_node.input_layers = [
             LayerNode(
