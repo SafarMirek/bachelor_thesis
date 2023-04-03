@@ -177,7 +177,9 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
         mask = [0 for _ in range(len(groups))]
         count = 1
         for i, group in enumerate(groups):
-            if calculate_model_size.calculate_weights_mobilenet_size(base_model, only_layers=group) > 0:
+            if calculate_model_size.calculate_weights_mobilenet_size(base_model, only_layers=group,
+                                                                     per_channel=self.per_channel,
+                                                                     symmetric=self.symmetric) > 0:
                 mask[i] = count
                 count = count + 1
         return mask
@@ -213,7 +215,9 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
                                                            activation_quant_wait=self.activation_quant_wait
                                                            )
                 # calculate size
-                memory = calculate_model_size.calculate_weights_mobilenet_size(quantized_model)
+                memory = calculate_model_size.calculate_weights_mobilenet_size(quantized_model,
+                                                                               per_channel=self.per_channel,
+                                                                               symmetric=self.symmetric)
 
                 return accuracy, memory
         finally:

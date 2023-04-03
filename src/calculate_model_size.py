@@ -9,7 +9,7 @@ from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLaye
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 
 
-def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
+def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, only_layers=None):
     size = 0  # Model size in bits
     for layer in model.layers:
         if only_layers is not None and layer.name not in only_layers:
@@ -20,7 +20,14 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
             layer_size = layer_size + num_bits_weight * np.prod(layer.kernel.shape)
 
             # Quant koeficients
-            layer_size = layer_size + 32 * (layer.kernel.shape[3])
+            if per_channel:
+                layer_size = layer_size + 32 * (layer.kernel.shape[3])
+                if not symmetric:
+                    layer_size = layer_size + num_bits_weight * (layer.kernel.shape[3])
+            else:
+                layer_size = layer_size + 32
+                if not symmetric:
+                    layer_size = layer_size + num_bits_weight
 
             # add bias size (non quantized) it will be there every time because of batch norm fold
             layer_size = layer_size + 32 * (layer.kernel.shape[3])
@@ -33,7 +40,14 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
             layer_size = layer_size + num_bits_weight * np.prod(layer.depthwise_kernel.shape)
 
             # Quant koeficients
-            layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
+            if per_channel:
+                layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
+                if not symmetric:
+                    layer_size = layer_size + num_bits_weight * (layer.depthwise_kernel.shape[2])
+            else:
+                layer_size = layer_size + 32
+                if not symmetric:
+                    layer_size = layer_size + num_bits_weight
 
             # add bias size (non quantized) it will be there every time because of batch norm fold
             layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
@@ -59,8 +73,13 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
 
                 if per_channel:
                     layer_size = layer_size + 32 * (layer.layer.kernel.shape[len(layer.layer.kernel.shape) - 1])
+                    if not symmetric:
+                        layer_size = layer_size + num_bits_weight * (
+                            layer.layer.kernel.shape[len(layer.layer.kernel.shape) - 1])
                 else:
                     layer_size = layer_size + 32
+                    if not symmetric:
+                        layer_size = layer_size + num_bits_weight
 
                 if layer.layer.use_bias:
                     layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias is not quantized
@@ -68,7 +87,9 @@ def calculate_weights_mobilenet_size(model, per_channel=True, only_layers=None):
                 # kernel
                 layer_size = layer_size + num_bits_weight * np.prod(layer.layer.kernel.shape)
 
-                layer_size = layer_size + 32
+                layer_size = layer_size + 32  # Scaling factor
+                if not symmetric:
+                    layer_size = layer_size + num_bits_weight  # Zero-point
 
                 if layer.layer.use_bias:
                     layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias is not quantized
