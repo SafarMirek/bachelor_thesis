@@ -114,11 +114,11 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
     if from_checkpoint is not None:
         q_aware_model.load_weights(from_checkpoint)
 
-    learning_rate_fn = keras.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate=learning_rate,
-        decay_steps=2.5 * len(train_ds),
-        decay_rate=0.98
-    )
+    total_steps = len(train_ds) * epochs
+    warmup_steps = int(warmup * total_steps)
+
+    schedule = WarmUpCosineDecay(target_lr=learning_rate, warmup_steps=warmup_steps, total_steps=total_steps,
+                                 hold=warmup_steps)
 
     if not from_checkpoint and activation_quant_wait == 0:
         q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
@@ -128,7 +128,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
         # Train activation moving averages
         q_aware_model.fit(train_ds, epochs=3)
 
-    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn, momentum=0.9),
+    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=schedule, momentum=0.9),
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
 
