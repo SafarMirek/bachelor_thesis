@@ -101,7 +101,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
         tr_ds = tr_ds.cache()
 
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
-    train_ds = train_ds.shuffle(10000).batch(batch_size)
+    train_ds = train_ds.shuffle(10000, seed=170619).batch(batch_size)
 
     ds = tinyimagenet.get_tinyimagenet_dataset(split="val")
     ds = ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
@@ -114,11 +114,11 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
     if from_checkpoint is not None:
         q_aware_model.load_weights(from_checkpoint)
 
-    total_steps = len(train_ds) * epochs
-    warmup_steps = int(warmup * total_steps)  # do not use warmup, only cosine decay
-
-    schedule = WarmUpCosineDecay(target_lr=learning_rate, warmup_steps=warmup_steps, total_steps=total_steps,
-                                 hold=warmup_steps)
+    learning_rate_fn = keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=learning_rate,
+        decay_steps=2.5 * len(train_ds),
+        decay_rate=0.98
+    )
 
     if not from_checkpoint and activation_quant_wait == 0:
         q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
@@ -128,7 +128,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
         # Train activation moving averages
         q_aware_model.fit(train_ds, epochs=3)
 
-    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=schedule, momentum=0.9),
+    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn),
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
 
