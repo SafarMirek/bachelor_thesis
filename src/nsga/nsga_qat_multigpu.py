@@ -27,10 +27,14 @@ class QATNSGA(nsga.nsga_qat.QATNSGA):
                          previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric)
 
     def init_analyzer(self) -> NSGAAnalyzer:
+        logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
+        checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
         return MultiGPUQATAnalyzer(batch_size=self.batch_size, qat_epochs=self.qat_epochs,
                                    learning_rate=0.2, cache_datasets=self.cache_datasets,
                                    approx=self.approx, activation_quant_wait=self.activation_quant_wait,
-                                   per_channel=self.per_channel, symmetric=self.symmetric)
+                                   per_channel=self.per_channel, symmetric=self.symmetric,
+                                   logs_dir_pattern=logs_dir_pattern,
+                                   checkpoints_dir_pattern=checkpoints_dir_pattern)
 
 
 class MultiGPUQATAnalyzer(NSGAAnalyzer):
@@ -214,6 +218,7 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
 
                 accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
                                                            epochs=self.qat_epochs,
+                                                           eval_epochs=150,
                                                            bn_freeze=self.bn_freeze,
                                                            batch_size=self.batch_size,
                                                            learning_rate=self.learning_rate,

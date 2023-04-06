@@ -71,7 +71,7 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
         return config
 
 
-def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_rate=0.05, warmup=0.0,
+def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=128, learning_rate=0.05, warmup=0.0,
          checkpoints_dir=None, logs_dir=None,
          cache_dataset=True, from_checkpoint=None, verbose=False, start_epoch=0, activation_quant_wait=0,
          save_best_only=False):
@@ -114,7 +114,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
     if from_checkpoint is not None:
         q_aware_model.load_weights(from_checkpoint)
 
-    total_steps = len(train_ds) * epochs
+    total_steps = len(train_ds) * eval_epochs
     warmup_steps = int(warmup * total_steps)
 
     schedule = WarmUpCosineDecay(target_lr=learning_rate, warmup_steps=warmup_steps, total_steps=total_steps,
@@ -254,6 +254,7 @@ if __name__ == "__main__":
     main(
         q_aware_model=q_aware_model,
         epochs=args.epochs,
+        eval_epochs=args.epochs,
         bn_freeze=args.bn_freeze,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,

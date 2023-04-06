@@ -41,10 +41,13 @@ class QATNSGA(NSGA):
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
+        logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
+        checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
         return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs, learning_rate=0.2,
                            cache_datasets=self.cache_datasets, approx=self.approx,
                            activation_quant_wait=self.activation_quant_wait, per_channel=self.per_channel,
-                           symmetric=self.symmetric)
+                           symmetric=self.symmetric, logs_dir_pattern=logs_dir_pattern,
+                           checkpoints_dir_pattern=checkpoints_dir_pattern)
 
     def get_init_parents(self):
         return [{"quant_conf": [i for _ in range(self.quantizable_layers)]} for i in range(2, 9)]
@@ -156,6 +159,7 @@ class QATAnalyzer(NSGAAnalyzer):
 
                 accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
                                                            epochs=self.qat_epochs,
+                                                           eval_epochs=150,
                                                            bn_freeze=self.bn_freeze,
                                                            batch_size=self.batch_size,
                                                            learning_rate=self.learning_rate,
