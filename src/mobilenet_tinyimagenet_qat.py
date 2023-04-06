@@ -128,7 +128,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
         # Train activation moving averages
         q_aware_model.fit(train_ds, epochs=3)
 
-    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn),
+    q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=learning_rate_fn, momentum=0.9),
                           loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                           metrics=['accuracy'])
 
