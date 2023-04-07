@@ -166,7 +166,7 @@ class QATAnalyzer(NSGAAnalyzer):
                                                            warmup=self.warmup,
                                                            checkpoints_dir=checkpoints_dir,
                                                            logs_dir=logs_dir,
-                                                           cache_dataset=True,
+                                                           cache_dataset=self.cache_datasets,
                                                            from_checkpoint=None,
                                                            verbose=False,
                                                            activation_quant_wait=self.activation_quant_wait,
