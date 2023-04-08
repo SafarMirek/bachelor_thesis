@@ -101,7 +101,7 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
         tr_ds = tr_ds.cache()
 
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
-    train_ds = train_ds.shuffle(10000, seed=170619).batch(batch_size)
+    train_ds = train_ds.shuffle(2500, seed=170619).batch(batch_size)
 
     ds = tinyimagenet.get_tinyimagenet_dataset(split="val")
     ds = ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
