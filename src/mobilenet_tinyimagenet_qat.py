@@ -101,7 +101,7 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
         tr_ds = tr_ds.cache()
 
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
-    train_ds = train_ds.shuffle(2500, seed=170619).batch(batch_size)
+    train_ds = train_ds.shuffle(10000, seed=170619).batch(batch_size)
 
     ds = tinyimagenet.get_tinyimagenet_dataset(split="val")
     ds = ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
@@ -177,14 +177,14 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
         # Train with not frozen batch norms
         q_aware_model.fit(train_ds, epochs=not_frozen_epochs, validation_data=test_ds,
                           callbacks=callbacks,
-                          initial_epoch=dis_act_quant_epochs)
+                          initial_epoch=max(dis_act_quant_epochs, start_epoch))
 
     if epochs > bn_freeze:
         # Train with bn frozen
         _freeze_bn_in_model(q_aware_model)
         q_aware_model.fit(train_ds, epochs=epochs, validation_data=test_ds,
                           callbacks=callbacks,
-                          initial_epoch=bn_freeze)
+                          initial_epoch=max(bn_freeze, start_epoch))
 
     qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     if verbose:
