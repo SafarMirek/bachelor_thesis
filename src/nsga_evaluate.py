@@ -53,7 +53,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
             pareto_ids = PyBspTreeArchive(2).filter([(-x["accuracy"], x["memory"]) for x in merged], returnIds=True)
             pareto = [merged[i] for i in pareto_ids]
         else:
-            pareto = merged
+            pareto = next_parent
 
     else:
         parsed_conf = json.loads(configuration)
