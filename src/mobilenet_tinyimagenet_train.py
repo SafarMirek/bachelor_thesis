@@ -10,7 +10,7 @@ import os
 
 
 def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_checkpoint, start_epoch, cache, save_as,
-         verbose, metal=False):
+         verbose):
     if verbose:
         print("Used configuration:")
         print(f'Start epoch: {start_epoch}')
@@ -24,7 +24,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             print(f'From checkpoint: {from_checkpoint}')
 
     # Create model
-    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.1, weights=None)
+    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.25, weights=None)
 
     if verbose:
         model.summary()
@@ -36,25 +36,10 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
     if cache:
         tr_ds = tr_ds.cache()
 
-    data_augmentation = tf.keras.Sequential([
-        keras.layers.RandomFlip("horizontal"),
-        keras.layers.RandomRotation(0.08),
-    ])
-
-    def augment(x):
-        if metal:
-            # tensorflow-metal has problem with this, using cpu fixes it
-            with tf.device("/cpu:0"):
-                out = data_augmentation(x, training=True)
-                return out
-        else:
-            return data_augmentation(x, training=True)
-
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
 
     train_ds = train_ds.shuffle(10000) \
         .batch(batch_size)
-    #     .map(lambda x, y: (augment(x), y)) \
 
     ds = tinyimagenet.get_tinyimagenet_dataset(split="val")
     ds = ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
@@ -112,8 +97,8 @@ if __name__ == "__main__":
         description='Train Mobilenet for ImageNet subset (100 classes only) datasets',
         epilog='')
 
-    parser.add_argument('-e', '--epochs', default=200, type=int)
-    parser.add_argument('-b', '--batch-size', default=128, type=int)
+    parser.add_argument('-e', '--epochs', default=250, type=int)
+    parser.add_argument('-b', '--batch-size', default=256, type=int)
 
     parser.add_argument('--learning-rate', '--lr', default=0.045, type=float)
 
@@ -122,11 +107,10 @@ if __name__ == "__main__":
 
     parser.add_argument('--from-checkpoint', default=None, type=str)
     parser.add_argument('--start-epoch', default=0, type=int)
-    parser.add_argument('--save-as', default="mobilenet_tinyimagenet.keras", type=str)
+    parser.add_argument('--save-as', default="mobilenet_tinyimagenet_025.keras", type=str)
 
     parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
     parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
-    parser.add_argument('--metal', default=False, action='store_true')
 
     args = parser.parse_args()
     main(
@@ -139,6 +123,5 @@ if __name__ == "__main__":
         start_epoch=args.start_epoch,
         cache=args.cache,
         save_as=args.save_as,
-        verbose=args.verbose,
-        metal=args.metal
+        verbose=args.verbose
     )
