@@ -19,7 +19,7 @@ class QATNSGA(NSGA):
 
     def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
-                 per_channel=True, symmetric=True):
+                 per_channel=True, symmetric=True, learning_rate=0.2):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
                          objectives=[("accuracy", True), ("memory", False)], previous_run=previous_run
@@ -32,6 +32,7 @@ class QATNSGA(NSGA):
         self.activation_quant_wait = activation_quant_wait
         self.per_channel = per_channel
         self.symmetric = symmetric
+        self.learning_rate = learning_rate
         self.quantizable_layers = self.get_analyzer().get_quantizable_layers()
 
     def get_maximal(self):
@@ -43,7 +44,7 @@ class QATNSGA(NSGA):
     def init_analyzer(self) -> NSGAAnalyzer:
         logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
         checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
-        return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs, learning_rate=0.2,
+        return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs, learning_rate=self.learning_rate,
                            cache_datasets=self.cache_datasets, approx=self.approx,
                            activation_quant_wait=self.activation_quant_wait, per_channel=self.per_channel,
                            symmetric=self.symmetric, logs_dir_pattern=logs_dir_pattern,

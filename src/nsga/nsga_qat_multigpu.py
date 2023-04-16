@@ -18,19 +18,20 @@ from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModel
 from queue import Queue
 
 
-class QATNSGA(nsga.nsga_qat.QATNSGA):
+class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
 
     def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
-                 per_channel=True, symmetric=True):
+                 per_channel=True, symmetric=True, learning_rate=0.2):
         super().__init__(logs_dir, base_model, parent_size, offspring_size, generations, batch_size, qat_epochs,
-                         previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric)
+                         previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric,
+                         learning_rate)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
         checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
         return MultiGPUQATAnalyzer(batch_size=self.batch_size, qat_epochs=self.qat_epochs,
-                                   learning_rate=0.2, cache_datasets=self.cache_datasets,
+                                   learning_rate=self.learning_rate, cache_datasets=self.cache_datasets,
                                    approx=self.approx, activation_quant_wait=self.activation_quant_wait,
                                    per_channel=self.per_channel, symmetric=self.symmetric,
                                    logs_dir_pattern=logs_dir_pattern,
