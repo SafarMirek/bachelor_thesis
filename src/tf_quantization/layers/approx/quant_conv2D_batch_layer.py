@@ -17,8 +17,8 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
                  kernel_initializer, bias_initializer, kernel_regularizer, bias_regularizer, kernel_constraint,
                  bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
-                 gamma_regularizer, beta_constraint, gamma_constraint, quantize=True, quantize_num_bits_weight=8,
-                 per_channel=True, symmetric=True, **kwargs):
+                 gamma_regularizer, beta_constraint, gamma_constraint, quantize, quantize_num_bits_weight,
+                 per_channel, symmetric, **kwargs):
         super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
                          data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
                          kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
@@ -347,7 +347,9 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
             "beta_constraint": constraints.serialize(self.beta_constraint),
             "gamma_constraint": constraints.serialize(self.gamma_constraint),
             "quantize": self.quantize,
-            "quantize_num_bits_weight": self.quantize_num_bits_weight
+            "quantize_num_bits_weight": self.quantize_num_bits_weight,
+            "per_channel": self.per_channel,
+            "symmetric": self.symmetric
         }
         return dict(list(base_config.items()) + list(config.items()))
 

@@ -2,6 +2,7 @@ import warnings
 
 import keras.layers
 import tensorflow_model_optimization as tfmot
+from keras import initializers
 from tensorflow import keras
 from tensorflow_model_optimization.python.core.quantization.keras import quantize_registry, quantizers, quant_ops
 from tensorflow_model_optimization.python.core.quantization.keras.experimental.default_n_bit.default_n_bit_quantize_registry import \
@@ -187,7 +188,8 @@ class CustomNBitQuantizeConfig(QuantizeConfig):
             'activation_attrs': self.activation_attrs,
             'quantize_output': self.quantize_output,
             'num_bits_weight': self._num_bits_weight,
-            'num_bits_activation': self._num_bits_activation
+            'num_bits_activation': self._num_bits_activation,
+            "activation_quant_no_affect": self._activation_quant_no_affect
         }
 
 
@@ -213,8 +215,8 @@ class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
         self.per_axis = per_axis
         self.symmetric = symmetric
         self.narrow_range = narrow_range
-        self.min_initializer = min_initializer
-        self.max_initializer = max_initializer
+        self.min_initializer = initializers.get(min_initializer)
+        self.max_initializer = initializers.get(max_initializer)
         self.no_affect = no_affect
 
     def build(self, tensor_shape, name, layer):
@@ -269,7 +271,10 @@ class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
             'num_bits': self.num_bits,
             'per_axis': self.per_axis,
             'symmetric': self.symmetric,
-            'narrow_range': self.narrow_range
+            'narrow_range': self.narrow_range,
+            "min_initializer": initializers.serialize(self.min_initializer),
+            "max_initializer": initializers.serialize(self.max_initializer),
+            "no_affect": self.no_affect
         }
 
     def __eq__(self, other):

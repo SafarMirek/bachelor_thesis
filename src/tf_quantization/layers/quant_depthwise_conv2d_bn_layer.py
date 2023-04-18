@@ -26,8 +26,8 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
                  activity_regularizer, depthwise_constraint, bias_constraint,
                  axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
-                 gamma_regularizer, beta_constraint, gamma_constraint, quantize=True, quantize_num_bits_weight=8,
-                 symmetric=True, **kwargs):
+                 gamma_regularizer, beta_constraint, gamma_constraint, quantize, quantize_num_bits_weight,
+                 symmetric, **kwargs):
         super().__init__(kernel_size=kernel_size, strides=strides, padding=padding, depth_multiplier=depth_multiplier,
                          data_format=data_format,
                          dilation_rate=dilation_rate,
@@ -320,7 +320,8 @@ class QuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.DepthwiseConv2D):
             "beta_constraint": constraints.serialize(self.beta_constraint),
             "gamma_constraint": constraints.serialize(self.gamma_constraint),
             "quantize": self.quantize,
-            "quantize_num_bits_weight": self.quantize_num_bits_weight
+            "quantize_num_bits_weight": self.quantize_num_bits_weight,
+            "symmetric": self.symmetric
         }
         return dict(list(base_config.items()) + list(config.items()))
 

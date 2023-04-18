@@ -375,7 +375,7 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
                 gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
                 quantize=True,
                 quantize_num_bits_weight=self.num_bits_weight,
-                symmetric=self.symmetric
+                symmetric=self.symmetric,
             )
 
         conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)
