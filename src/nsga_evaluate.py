@@ -15,14 +15,14 @@ from nsga.nsga_qat_multigpu import MultiGPUQATAnalyzer
 
 def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_wait, learning_rate, warmup,
          mobilenet_path, multigpu, approx, per_channel, symmetric, checkpoints_dir_pattern, logs_dir_pattern,
-         configuration=None, all=False):
+         configuration=None, all=False, cache_datasets=False):
     if multigpu:
         analyzer = MultiGPUQATAnalyzer(batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
                                        learning_rate=learning_rate, warmup=warmup,
                                        activation_quant_wait=activation_quant_wait,
                                        approx=approx, per_channel=per_channel, symmetric=symmetric,
                                        logs_dir_pattern=logs_dir_pattern,
-                                       checkpoints_dir_pattern=checkpoints_dir_pattern)
+                                       checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets)
     else:
         base_model = keras.models.load_model(mobilenet_path)
         analyzer = QATAnalyzer(base_model, batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
@@ -30,7 +30,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                activation_quant_wait=activation_quant_wait,
                                approx=approx, per_channel=per_channel, symmetric=symmetric,
                                logs_dir_pattern=logs_dir_pattern,
-                               checkpoints_dir_pattern=checkpoints_dir_pattern)
+                               checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets)
 
     if run is None and configuration is None:
         raise ValueError("Configuration for evaluation is missing")
@@ -100,6 +100,8 @@ if __name__ == "__main__":
     parser.add_argument("--logs-dir-pattern", default="logs/mobilenet/%s")
     parser.add_argument("--checkpoints-dir-pattern", default="checkpoints/mobilenet/%s")
 
+    parser.add_argument('--cache', default=False, action='store_true')
+
     args = parser.parse_args()
 
     main(output_file=args.output_file,
@@ -108,4 +110,4 @@ if __name__ == "__main__":
          warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu, approx=args.approx,
          per_channel=args.per_channel, symmetric=args.symmetric, logs_dir_pattern=args.logs_dir_pattern,
          checkpoints_dir_pattern=args.checkpoints_dir_pattern,
-         configuration=args.configuration, all=args.all)
+         configuration=args.configuration, all=args.all, cache_datasets=args.cache)
