@@ -38,13 +38,16 @@ class QATNSGA(NSGA):
     def get_maximal(self):
         return {
             "accuracy": 1.0,
-            "memory": calculate_model_size.calculate_weights_mobilenet_size(self.base_model)
+            "memory": calculate_model_size.calculate_weights_mobilenet_size(self.base_model,
+                                                                            per_channel=self.per_channel,
+                                                                            symmetric=self.symmetric)
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
         logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
         checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
-        return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs, learning_rate=self.learning_rate,
+        return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs,
+                           learning_rate=self.learning_rate,
                            cache_datasets=self.cache_datasets, approx=self.approx,
                            activation_quant_wait=self.activation_quant_wait, per_channel=self.per_channel,
                            symmetric=self.symmetric, logs_dir_pattern=logs_dir_pattern,
@@ -160,7 +163,7 @@ class QATAnalyzer(NSGAAnalyzer):
 
                 accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
                                                            epochs=self.qat_epochs,
-                                                           eval_epochs=150,
+                                                           eval_epochs=50,
                                                            bn_freeze=self.bn_freeze,
                                                            batch_size=self.batch_size,
                                                            learning_rate=self.learning_rate,

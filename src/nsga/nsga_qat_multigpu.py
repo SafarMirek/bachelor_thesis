@@ -219,7 +219,7 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
 
                 accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
                                                            epochs=self.qat_epochs,
-                                                           eval_epochs=150,
+                                                           eval_epochs=50,
                                                            bn_freeze=self.bn_freeze,
                                                            batch_size=self.batch_size,
                                                            learning_rate=self.learning_rate,

@@ -1,13 +1,11 @@
 import warnings
 
-import tensorflow as tf
-from tensorflow import keras
 import keras.layers
-
 import tensorflow_model_optimization as tfmot
+from tensorflow import keras
 from tensorflow_model_optimization.python.core.quantization.keras import quantize_registry, quantizers, quant_ops
 from tensorflow_model_optimization.python.core.quantization.keras.experimental.default_n_bit.default_n_bit_quantize_registry import \
-    DefaultNBitConvQuantizeConfig, DefaultNBitQuantizeConfig
+    DefaultNBitQuantizeConfig
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_config import QuantizeConfig
 from tensorflow_model_optimization.python.core.quantization.keras.quantizers import _QuantizeHelper, Quantizer, \
     LastValueQuantizer
@@ -15,9 +13,19 @@ from tensorflow_model_optimization.python.core.quantization.keras.quantizers imp
 DefaultNBitQuantizeRegistry = tfmot.quantization.keras.experimental.default_n_bit.DefaultNBitQuantizeRegistry
 
 
-class QuantizeRegistry(quantize_registry.QuantizeRegistry):
+class PerLayerNBitQuantizeRegistry(quantize_registry.QuantizeRegistry):
+    """
+    Quantize registry for per-layer quantization
+    """
 
     def __init__(self, quantization_config, activation_quant_no_affect=False, per_channel=True, symmetric=True):
+        """
+        TODO:
+        :param quantization_config: List of quantization configs for each layer
+        :param activation_quant_no_affect: Disable activation quantization
+        :param per_channel: Use per-channel quantization for weights of convolution layers
+        :param symmetric: Use symmetric or asymmetric quantization for weights of convolution layers
+        """
         self._quantization_config = quantization_config
         self.registries = [
             [
@@ -31,6 +39,11 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
         self.symmetric = symmetric
 
     def get_quantize_config(self, layer: keras.layers.Layer):
+        """
+
+        :param layer: layer to be quantized
+        :return: QuantizeConfig for layer
+        """
         num_weight_bits = 8
         num_activation_bits = 8
 
@@ -63,6 +76,11 @@ class QuantizeRegistry(quantize_registry.QuantizeRegistry):
         return self.registries[num_weight_bits - 1][num_activation_bits - 1].get_quantize_config(layer)
 
     def supports(self, layer: keras.layers.Layer):
+        """
+        Checks if registry supports given layer
+        :param layer: layer to be quantized
+        :return: true if quantize registry supports given layer
+        """
         return self.registries[8 - 1][8 - 1].supports(layer)
 
 

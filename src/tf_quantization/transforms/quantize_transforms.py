@@ -3,7 +3,7 @@ import re
 
 from tensorflow_model_optimization.python.core.quantization.keras import quantize_layout_transform
 from tensorflow_model_optimization.python.core.quantization.keras.experimental.default_n_bit import \
-    default_n_bit_transforms, default_n_bit_quantize_layout_transform
+    default_n_bit_transforms
 
 from tf_quantization.transforms import custom_n_bit_quantize_layout_transform
 
@@ -113,7 +113,7 @@ class PerLayerQuantizeModelTransformer:
         remaining = set(nodes)
 
         while len(remaining) > 0:
-            group = set()
+            group = list()
             nodes = {remaining.pop()}
             while len(nodes) > 0:
                 node = nodes.pop()
@@ -122,9 +122,10 @@ class PerLayerQuantizeModelTransformer:
                         continue
                     remaining.remove(child)
                     nodes.add(child)
-                group.add(node)
+                group.append(node)
+                group = sorted(group)
             graphs.append(group)
-        return graphs
+        return sorted(graphs)
 
     @staticmethod
     def _match_pattern(target, pattern):
