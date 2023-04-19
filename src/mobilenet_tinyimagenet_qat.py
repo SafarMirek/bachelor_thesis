@@ -186,8 +186,8 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
                           callbacks=callbacks,
                           initial_epoch=max(bn_freeze, start_epoch))
 
-    qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
     if verbose:
+        qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
         print(f'Top-1 accuracy after (quantized float): {qa_acc * 100:.2f}%')
         print(f'Max accuracy during training was: {max_accuracy_callback.get_max_accuracy() * 100:.2f}%')
     return max_accuracy_callback.get_max_accuracy()
