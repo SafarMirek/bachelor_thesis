@@ -101,7 +101,7 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
         tr_ds = tr_ds.cache()
 
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
-    train_ds = train_ds.shuffle(10000, seed=170619).batch(batch_size).prefetch(8)
+    train_ds = train_ds.shuffle(10000, seed=170619).batch(batch_size).prefetch(32)
 
     ds = tinyimagenet.get_tinyimagenet_dataset(split="val")
     ds = ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
@@ -109,7 +109,7 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
     if cache_dataset:
         ds = ds.cache()
 
-    test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(batch_size).prefetch(8)
+    test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(batch_size).prefetch(32)
 
     if from_checkpoint is not None:
         q_aware_model.load_weights(from_checkpoint)
