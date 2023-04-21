@@ -1,3 +1,6 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+
 import keras.layers
 import numpy as np
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapperV2
@@ -10,6 +13,16 @@ from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwis
 
 
 def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, only_layers=None):
+    """
+    This functions calculates memory size of weights of the original/quantized model
+    Supported layers are: Dense Layer, Conv2D Layer, DepthwiseConv2DLayer, QuantConv2DBatch Layers
+    and QuantDepthwiseConv2DBatchNormalization Layers
+    :param model: Model to be analyzed
+    :param per_channel: If quantization of weights is per_channel
+    :param symmetric: If quantization of weights is symmetric
+    :param only_layers: Calculate size of specific layers
+    :return: model's weights memory size in bits
+    """
     size = 0  # Model size in bits
     for layer in model.layers:
         if only_layers is not None and layer.name not in only_layers:

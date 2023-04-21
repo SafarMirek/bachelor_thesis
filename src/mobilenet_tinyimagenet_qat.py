@@ -81,6 +81,26 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
          checkpoints_dir=None, logs_dir=None,
          cache_dataset=True, from_checkpoint=None, verbose=False, start_epoch=0, activation_quant_wait=0,
          save_best_only=False):
+    """
+    Run quantization-aware training with provided quantized model for tinyimagenet dataset and returns the best accuracy
+    achieved during training
+    :param q_aware_model: Provided model with fake quantization
+    :param epochs: Number of epochs for the training
+    :param eval_epochs: Number of maximal epochs for calculating cos decay of learning rate
+    :param bn_freeze: Epoch when should the model's batch normalizations be freezed
+    :param batch_size: Size of the batch
+    :param learning_rate: Starting learning rate
+    :param warmup: Warmup percent
+    :param checkpoints_dir: Directory for checkpoints
+    :param logs_dir: Directory for training logs
+    :param cache_dataset: If the dataset should be cached during training
+    :param from_checkpoint: Continue from checkpoint
+    :param verbose: Should be verbose
+    :param start_epoch: Continue from epoch
+    :param activation_quant_wait: When activation quantization should be activated
+    :param save_best_only: Save only best checkpoints
+    :return: Best achieved accuracy during QA training
+    """
     if verbose:
         print("Used configuration:")
         print(f'Number of epochs: {epochs}')
@@ -99,7 +119,7 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
     if bn_freeze < activation_quant_wait:
         raise ValueError("BN Freeze before activation quant is not supported")
 
-    # Load dataset
+    # Load tinyimagenet training and validation dataset
     tr_ds = tinyimagenet.get_tinyimagenet_dataset(split="train")
     tr_ds = tr_ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
 
@@ -120,6 +140,10 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
     if from_checkpoint is not None:
         q_aware_model.load_weights(from_checkpoint)
 
+    # Use Cosine Decay for learning rate
+    # Total steps are calculated from eval epochs and not from epochs itself
+    # That allows us to partially train the model with same learning rate as the model
+    # will be trained in the final evaluation
     total_steps = len(train_ds) * eval_epochs
     warmup_steps = int(warmup * total_steps)
 
@@ -127,11 +151,15 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
                                  hold=warmup_steps)
 
     if not from_checkpoint and activation_quant_wait == 0:
+        # Train activation moving averages
+        # When activation quantization is activated since the start of the training
+        # we need to train the model with 0 learning rate for few epochs to achieve
+        # better results (quantization ranges are starting from <-6,6> and needs to be adjusted for the network)
+
         q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0),
                               loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                               metrics=['accuracy'])
 
-        # Train activation moving averages
         q_aware_model.fit(train_ds, epochs=3)
 
     q_aware_model.compile(optimizer=tf.keras.optimizers.legacy.SGD(learning_rate=schedule, momentum=0.9),
@@ -139,9 +167,10 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
                           metrics=['accuracy'])
 
     if activation_quant_wait > 0:
+        # Disable activation quantization for the first epochs
         _set_act_quant_no_affect(q_aware_model, True)
 
-    # Define checkpoint callback for saving model weights after each epoch
+    # Define checkpoint callback for saving model weights after each epoch (resp. best weights only)
     callbacks = []
     max_accuracy_callback = MaxAccuracyCallback()
     callbacks.append(max_accuracy_callback)
@@ -161,7 +190,7 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
         )
         callbacks.append(model_checkpoint_callback)
 
-    # Define the Keras TensorBoard callback.
+    # Define the Keras TensorBoard callback
     if logs_dir is not None:
         logs_dir = os.path.abspath(logs_dir)
         logs_dir = os.path.join(logs_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -178,15 +207,14 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
                       initial_epoch=start_epoch)
 
     if epochs > activation_quant_wait:
-        # Train with bn frozen
+        # Train with quantization of activations enabled and with not frozen batch norms
         _set_act_quant_no_affect(q_aware_model, False)
-        # Train with not frozen batch norms
         q_aware_model.fit(train_ds, epochs=not_frozen_epochs, validation_data=test_ds,
                           callbacks=callbacks,
                           initial_epoch=max(dis_act_quant_epochs, start_epoch))
 
     if epochs > bn_freeze:
-        # Train with bn frozen
+        # Train with bn frozen and with quantization of activations enabled
         _freeze_bn_in_model(q_aware_model)
         q_aware_model.fit(train_ds, epochs=epochs, validation_data=test_ds,
                           callbacks=callbacks,
@@ -196,10 +224,15 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
         qa_loss, qa_acc = q_aware_model.evaluate(test_ds)
         print(f'Top-1 accuracy after (quantized float): {qa_acc * 100:.2f}%')
         print(f'Max accuracy during training was: {max_accuracy_callback.get_max_accuracy() * 100:.2f}%')
+
     return max_accuracy_callback.get_max_accuracy()
 
 
 def _freeze_bn_in_model(model: keras.models.Model):
+    """
+    Freezes batch normalization in the network
+    :param model: Model with fake quantization and batch normalization
+    """
     for layer in model.layers:
         if (isinstance(layer, QuantConv2DBatchLayer) or
                 isinstance(layer, ApproximateQuantConv2DBatchLayer) or
@@ -213,6 +246,11 @@ def _freeze_bn_in_model(model: keras.models.Model):
 
 
 def _set_act_quant_no_affect(model, value):
+    """
+    Enables/Disables quantization of activations in the network
+    :param model: Model with fake quantization
+    :param value: True to disable act quantization and False to enable it
+    """
     for layer in model.layers:
         if isinstance(layer, QuantizeWrapper):
             if hasattr(layer.quantize_config, "activation_quantizer"):
@@ -256,11 +294,11 @@ if __name__ == "__main__":
     loaded_model = keras.models.load_model(args.mobilenet_path)
 
     quant_layer_conf = {"weight_bits": args.weight_bits, "activation_bits": 8}
-    q_aware_model = quantize_model(loaded_model, [quant_layer_conf for _ in range(37)], approx=args.approx,
-                                   per_channel=args.per_channel, symmetric=args.symmetric)
+    qa_model = quantize_model(loaded_model, [quant_layer_conf for _ in range(37)], approx=args.approx,
+                              per_channel=args.per_channel, symmetric=args.symmetric)
 
     main(
-        q_aware_model=q_aware_model,
+        q_aware_model=qa_model,
         epochs=args.epochs,
         eval_epochs=args.epochs,
         bn_freeze=args.bn_freeze,

@@ -1,5 +1,6 @@
-# This script takes nsga output and evalutes the results with longed quantization aware training to achieve
-# more accurate results
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+
 import argparse
 import gzip
 import json
@@ -15,7 +16,30 @@ from nsga.nsga_qat_multigpu import MultiGPUQATAnalyzer
 
 def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_wait, learning_rate, warmup,
          mobilenet_path, multigpu, approx, per_channel, symmetric, checkpoints_dir_pattern, logs_dir_pattern,
-         configuration=None, all=False, cache_datasets=False):
+         configuration=None, all_parents=False, cache_datasets=False):
+    """
+    Evaluates output of NSGA after quantization-aware training
+
+    :param output_file: Output file with evaluation of the best candidates from NSGA
+    :param run: The NSGA run to be evaluated
+    :param batch_size: Batch size
+    :param qat_epochs: Number of quantization-aware training epochs
+    :param bn_freeze: Number of epochs before freezing batch norms of model
+    :param activation_quant_wait: Number of epochs before enabling quantization of activations
+    :param learning_rate: Starting learning rate for quantization-aware training
+    :param warmup: Learning rate warmup
+    :param mobilenet_path: Path to mobilenet
+    :param multigpu: Evaluate quantization configurations on multiple GPUs
+    :param approx: Use Approximate version of QuantFusedConv2BatchNormalization
+    :param per_channel: Quantize weights per channel
+    :param symmetric: Quantize weights symmetrically
+    :param checkpoints_dir_pattern: Pattern for directory path for saving checkpoints of evaluated models
+    :param logs_dir_pattern:Pattern for directory path for saving tensorboard logs of evaluated models
+    :param configuration: Configuration for evaluation
+    :param all_parents: Evaluate all parents
+    :param cache_datasets: Cache datasets durings training of models
+    """
+
     if multigpu:
         analyzer = MultiGPUQATAnalyzer(batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
                                        learning_rate=learning_rate, warmup=warmup,
@@ -49,7 +73,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
         offsprings = pr["offspring"]
         merged = next_parent + offsprings
 
-        if not all:
+        if not all_parents:
             pareto_ids = PyBspTreeArchive(2).filter([(-x["accuracy"], x["memory"]) for x in merged], returnIds=True)
             pareto = [merged[i] for i in pareto_ids]
         else:
@@ -81,12 +105,12 @@ if __name__ == "__main__":
     group.add_argument("--run")
     group.add_argument("--configuration")
 
-    parser.add_argument('-e', '--epochs', default=150, type=int)
-    parser.add_argument('-b', '--batch-size', default=256, type=int)
-    parser.add_argument('--bn-freeze', default=100, type=int)
-    parser.add_argument('--act-quant-wait', default=40, type=int)
+    parser.add_argument('-e', '--epochs', default=50, type=int)
+    parser.add_argument('-b', '--batch-size', default=64, type=int)
+    parser.add_argument('--bn-freeze', default=40, type=int)
+    parser.add_argument('--act-quant-wait', default=20, type=int)
 
-    parser.add_argument('--learning-rate', '--lr', default=0.2, type=float)
+    parser.add_argument('--learning-rate', '--lr', default=0.0025, type=float)
     parser.add_argument('--warmup', default=0.05, type=float)
 
     parser.add_argument('--multigpu', default=False, action='store_true')
@@ -110,4 +134,4 @@ if __name__ == "__main__":
          warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu, approx=args.approx,
          per_channel=args.per_channel, symmetric=args.symmetric, logs_dir_pattern=args.logs_dir_pattern,
          checkpoints_dir_pattern=args.checkpoints_dir_pattern,
-         configuration=args.configuration, all=args.all, cache_datasets=args.cache)
+         configuration=args.configuration, all_parents=args.all, cache_datasets=args.cache)

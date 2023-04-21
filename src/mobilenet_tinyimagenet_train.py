@@ -1,3 +1,6 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+
 import argparse
 from datetime import datetime
 
@@ -10,7 +13,22 @@ import os
 
 
 def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_checkpoint, start_epoch, cache, save_as,
-         verbose):
+         verbose, alpha):
+    """
+    Train mobilenet for out created tinyimagenet dataset with 100 classes and 1000 samples per each class
+    :param epochs: Number of epochs
+    :param batch_size: Batch size
+    :param learning_rate: Starting learning rate
+    :param logs_dir: Directory for training logs
+    :param checkpoints_dir: Directory for checkpoints
+    :param from_checkpoint: Continue from checkpoint
+    :param start_epoch: Continue from epoch
+    :param cache: Cache datasets during trainig
+    :param save_as: The destination of the trained model
+    :param verbose: Should the run be verbose
+    :param alpha: Alpha of the mobilenet
+    :return:
+    """
     if verbose:
         print("Used configuration:")
         print(f'Start epoch: {start_epoch}')
@@ -20,16 +38,18 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
         print(f'Checkpoints directory: {checkpoints_dir}')
         print(f'Logs directory: {logs_dir}')
         print(f'Cache training dataset: {cache}')
+        print(f'Model alpha: {alpha}')
         if from_checkpoint is not None:
             print(f'From checkpoint: {from_checkpoint}')
 
     # Create model
-    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=0.25, weights=None)
+    # We train model from the start and not using any pretrained weights
+    model = MobileNet(input_shape=(224, 224, 3), classes=100, alpha=alpha, weights=None)
 
     if verbose:
         model.summary()
 
-    # Load dataset
+    # Load tinyimagenet training and validation dataset
     tr_ds = tinyimagenet.get_tinyimagenet_dataset(split="train")
     tr_ds = tr_ds.map(tinyimagenet.get_preprocess_image_fn(image_size=(224, 224)))
 
@@ -49,6 +69,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
 
     test_ds = ds.map(lambda data: (data['image'], data['label'])).batch(batch_size)
 
+    # Learning rate scheduler for exponential decay of learning rate
     learning_rate_fn = keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate=learning_rate,
         decay_steps=2.5 * len(train_ds),
@@ -81,6 +102,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
     os.makedirs(logs_dir)
     tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logs_dir)
 
+    # Train model
     model.fit(train_ds, epochs=epochs, validation_data=test_ds, initial_epoch=start_epoch,
               callbacks=[model_checkpoint_callback, tensorboard_callback])
 
@@ -111,6 +133,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
     parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
+    parser.add_argument("--alpha", default=0.25, type=float)
 
     args = parser.parse_args()
     main(
@@ -123,5 +146,6 @@ if __name__ == "__main__":
         start_epoch=args.start_epoch,
         cache=args.cache,
         save_as=args.save_as,
-        verbose=args.verbose
+        verbose=args.verbose,
+        alpha=args.alpha
     )
