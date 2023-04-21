@@ -1,3 +1,6 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+
 import argparse
 from abc import ABC
 from datetime import datetime
@@ -7,6 +10,9 @@ import tensorflow as tf
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapper
 
 from callbacks import MaxAccuracyCallback
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
+    ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_model import quantize_model
@@ -193,10 +199,12 @@ def main(*, q_aware_model, epochs, eval_epochs, bn_freeze=10e1000, batch_size=12
     return max_accuracy_callback.get_max_accuracy()
 
 
-def _freeze_bn_in_model(model):
+def _freeze_bn_in_model(model: keras.models.Model):
     for layer in model.layers:
         if (isinstance(layer, QuantConv2DBatchLayer) or
-                isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer)):
+                isinstance(layer, ApproximateQuantConv2DBatchLayer) or
+                isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproximateQuantDepthwiseConv2DBatchNormalizationLayer)):
             layer.freeze_bn()
         if isinstance(layer, QuantizeWrapper):
             if isinstance(layer.layer, keras.layers.BatchNormalization):
@@ -245,10 +253,10 @@ if __name__ == "__main__":
     parser.add_argument('--symmetric', default=False, action='store_true')
 
     args = parser.parse_args()
-    model = keras.models.load_model(args.mobilenet_path)
+    loaded_model = keras.models.load_model(args.mobilenet_path)
 
     quant_layer_conf = {"weight_bits": args.weight_bits, "activation_bits": 8}
-    q_aware_model = quantize_model(model, [quant_layer_conf for _ in range(37)], approx=args.approx,
+    q_aware_model = quantize_model(loaded_model, [quant_layer_conf for _ in range(37)], approx=args.approx,
                                    per_channel=args.per_channel, symmetric=args.symmetric)
 
     main(
