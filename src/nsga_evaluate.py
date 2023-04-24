@@ -124,7 +124,8 @@ if __name__ == "__main__":
     parser.add_argument("--logs-dir-pattern", default="logs/mobilenet/%s")
     parser.add_argument("--checkpoints-dir-pattern", default="checkpoints/mobilenet/%s")
 
-    parser.add_argument('--cache', default=False, action='store_true')
+    # There is an error while using cache during evaluation
+    # parser.add_argument('--cache', default=False, action='store_true')
 
     args = parser.parse_args()
 
@@ -134,4 +135,4 @@ if __name__ == "__main__":
          warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu, approx=args.approx,
          per_channel=args.per_channel, symmetric=args.symmetric, logs_dir_pattern=args.logs_dir_pattern,
          checkpoints_dir_pattern=args.checkpoints_dir_pattern,
-         configuration=args.configuration, all_parents=args.all, cache_datasets=args.cache)
+         configuration=args.configuration, all_parents=args.all, cache_datasets=False)

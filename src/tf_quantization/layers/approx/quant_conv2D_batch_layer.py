@@ -156,10 +156,10 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
 
         self.built = True
 
-    def _get_folded_weights(self, std_dev):
+    def _get_folded_weights(self, std_dev, kernel):
         gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
-        return (gamma / std_dev) * self.kernel
+        return (gamma / std_dev) * kernel
 
     def _reset_folded_weights(self, std_dev, outputs):
         gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
@@ -185,12 +185,17 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
 
         if not training:
             moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-            folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
-
-            # quantization of weights
-            if self.weights_quantizer is not None:
-                folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                                 weights=self._quantizer_weights)
+            if not self.per_channel:
+                folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=self.kernel)
+                if self.weights_quantizer is not None:
+                    folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                                     weights=self._quantizer_weights)
+            else:
+                folded_weights = self.kernel
+                if self.weights_quantizer is not None:
+                    folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                                     weights=self._quantizer_weights)
+                folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=folded_weights)
 
             outputs = self.convolution_op(inputs, folded_weights)
             if self.use_bias:
@@ -206,11 +211,20 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
             return outputs
 
         moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-        folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
+
+        if not self.per_channel:
+            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=self.kernel)
+        else:
+            folded_weights = self.kernel
 
         if self.weights_quantizer is not None:
             folded_weights = self.weights_quantizer.__call__(folded_weights, training,
                                                              weights=self._quantizer_weights)
+
+        if self._frozen_bn and self.per_channel:
+            # If bn is frozen we need to fold weights, since ranges for per-channel quantization are not
+            # scaled we need to scale weights after quantization and not before it
+            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=folded_weights)
 
         outputs = self.convolution_op(inputs, folded_weights)
 
@@ -222,7 +236,8 @@ class ApproximateQuantConv2DBatchLayer(keras.layers.Conv2D):
             return outputs
 
         # * ( sqrt(var) / gamma)
-        outputs = self._reset_folded_weights(moving_std_dev, outputs)
+        if not self.per_channel:
+            outputs = self._reset_folded_weights(moving_std_dev, outputs)
 
         if self.use_bias:
             outputs = tf.nn.bias_add(

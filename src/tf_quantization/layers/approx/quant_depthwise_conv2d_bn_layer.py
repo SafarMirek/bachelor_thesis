@@ -176,10 +176,10 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
         return (std_dev / gamma) * outputs
 
-    def _get_folded_weights(self, std_dev):
+    def _get_folded_weights(self, std_dev, depthwise_kernel):
         gamma = tf.reshape(self.gamma, (1, 1, self.gamma.shape[0], 1))
         std_dev = tf.reshape(std_dev, (1, 1, std_dev.shape[0], 1))
-        return (gamma / std_dev) * self.depthwise_kernel
+        return (gamma / std_dev) * depthwise_kernel
 
     def _add_folded_bias(self, outputs, bias, mean, std_dev):
         # TODO: Handle multiple axes batch normalization
@@ -197,17 +197,23 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
 
         if not training:
             moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-            folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
-
-            # quantization of weights
-            if self.weights_quantizer is not None:
-
-                if self.per_channel:
+            if not self.per_channel:
+                folded_weights = self._get_folded_weights(std_dev=moving_std_dev,
+                                                          depthwise_kernel=self.depthwise_kernel)
+                if self.weights_quantizer is not None:
+                    folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                                     weights=self._quantizer_weights)
+            else:
+                folded_weights = self.depthwise_kernel
+                # quantization of weights
+                if self.weights_quantizer is not None:
                     folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-                folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                                 weights=self._quantizer_weights)
-                if self.per_channel:
+                    folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                                     weights=self._quantizer_weights)
                     folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
+
+                folded_weights = self._get_folded_weights(std_dev=moving_std_dev,
+                                                          depthwise_kernel=folded_weights)
 
             outputs = backend.depthwise_conv2d(
                 inputs,
@@ -230,7 +236,11 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
             return outputs
 
         moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-        folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
+        if not self.per_channel:
+            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, depthwise_kernel=self.depthwise_kernel)
+        else:
+            folded_weights = self.depthwise_kernel
+
         # quantization of weights
         if self.weights_quantizer is not None:
             if self.per_channel:
@@ -239,6 +249,11 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
                                                              weights=self._quantizer_weights)
             if self.per_channel:
                 folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
+
+        if self._frozen_bn and self.per_channel:
+            # If bn is frozen we need to fold weights, since ranges for per-channel quantization are not
+            # scaled we need to scale weights after quantization and not before it
+            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, depthwise_kernel=folded_weights)
 
         outputs = backend.depthwise_conv2d(
             inputs,
@@ -257,7 +272,8 @@ class ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(keras.layers.Depthw
             return outputs
 
         # * ( std_dev / gamma)
-        outputs = self._reset_folded_weights(moving_std_dev, outputs)
+        if not self.per_channel:
+            outputs = self._reset_folded_weights(moving_std_dev, outputs)
 
         if self.use_bias:
             outputs = backend.bias_add(

@@ -33,7 +33,7 @@ class QATNSGA(NSGA):
         self.per_channel = per_channel
         self.symmetric = symmetric
         self.learning_rate = learning_rate
-        self.quantizable_layers = self.get_analyzer().get_quantizable_layers()
+        self.quantizable_layers = self.get_analyzer().get_number_of_quantizable_layers()
 
     def get_maximal(self):
         return {
@@ -206,7 +206,7 @@ class QATAnalyzer(NSGAAnalyzer):
         return quantize_model(self.base_model, config, approx=self.approx, per_channel=self.per_channel,
                               symmetric=self.symmetric)
 
-    def get_quantizable_layers(self):
+    def get_number_of_quantizable_layers(self):
         return len(list(filter(lambda x: x != 0, self.mask)))
 
     @property
