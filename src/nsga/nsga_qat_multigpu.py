@@ -166,7 +166,7 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
     def __str__(self):
         return "cache(%s,%d)" % (self.cache_file, len(self.cache))
 
-    def get_quantizable_layers(self):
+    def get_number_of_quantizable_layers(self):
         return len(list(filter(lambda x: x != 0, self.mask)))
 
     @property
