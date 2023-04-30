@@ -6,17 +6,22 @@ from tensorflow_model_optimization.python.core.quantization.keras import quantiz
 
 class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.DepthwiseConv2D):
 
-    def __init__(self, filters, kernel_size, strides, padding, data_format, dilation_rate, groups, use_bias,
-                 kernel_initializer, bias_initializer, kernel_regularizer, bias_regularizer, kernel_constraint,
-                 bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
+    def __init__(self, kernel_size, strides, padding, depth_multiplier, data_format, dilation_rate, activation,
+                 use_bias, depthwise_initializer, bias_initializer, depthwise_regularizer, bias_regularizer,
+                 activity_regularizer, depthwise_constraint, bias_constraint,
+                 axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize, quantize_num_bits_weight,
                  per_channel, symmetric, **kwargs):
-        super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
-                         data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
-                         kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
-                         kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
-                         kernel_constraint=kernel_constraint,
+        super().__init__(kernel_size=kernel_size, strides=strides, padding=padding, depth_multiplier=depth_multiplier,
+                         data_format=data_format,
+                         dilation_rate=dilation_rate,
+                         activation=activation,
+                         use_bias=use_bias, depthwise_initializer=depthwise_initializer,
+                         bias_initializer=bias_initializer,
+                         depthwise_regularizer=depthwise_regularizer,
+                         bias_regularizer=bias_regularizer,
+                         activity_regularizer=activity_regularizer, depthwise_constraint=depthwise_constraint,
                          bias_constraint=bias_constraint, **kwargs)
 
         # TODO: I currently do not support more that 1 groups
