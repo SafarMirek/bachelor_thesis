@@ -28,11 +28,11 @@ from tensorflow_model_optimization.python.core.quantization.keras.experimental.d
 from tensorflow_model_optimization.python.core.quantization.keras.graph_transformations import model_transformer
 from tensorflow_model_optimization.python.core.quantization.keras.graph_transformations import transforms
 
-from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproxQuantFusedConv2DBatchNormalizationLayer
 from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
-    ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
-from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
-from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
+    ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_conv2D_batch_layer import QuantFusedConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantFusedDepthwiseConv2DBatchNormalizationLayer
 
 keras = tf.keras
 LayerNode = transforms.LayerNode
@@ -176,7 +176,7 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
             return relu_layer_node
 
         if self.approx:
-            conv_bn_layer = ApproximateQuantConv2DBatchLayer(
+            conv_bn_layer = ApproxQuantFusedConv2DBatchNormalizationLayer(
                 name=conv_layer_node.layer['config']['name'] + "_bnfolded",
                 filters=conv_layer_node.layer['config']['filters'],
                 kernel_size=conv_layer_node.layer['config']['kernel_size'],
@@ -211,7 +211,7 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
                 per_channel=self.per_channel
             )
         else:
-            conv_bn_layer = QuantConv2DBatchLayer(
+            conv_bn_layer = QuantFusedConv2DBatchNormalizationLayer(
                 name=conv_layer_node.layer['config']['name'] + "_bnfolded",
                 filters=conv_layer_node.layer['config']['filters'],
                 kernel_size=conv_layer_node.layer['config']['kernel_size'],
@@ -242,7 +242,8 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
                 gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
                 quantize=True,
                 quantize_num_bits_weight=self.num_bits_weight,
-                symmetric=self.symmetric
+                symmetric=self.symmetric,
+                per_channel=self.per_channel
             )
 
         conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)
@@ -307,7 +308,7 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
             return relu_layer_node
 
         if self.approx:
-            conv_bn_layer = ApproximateQuantDepthwiseConv2DBatchNormalizationLayer(
+            conv_bn_layer = ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer(
                 name=conv_layer_node.layer['config']['name'] + "_bnfolded",
                 kernel_size=conv_layer_node.layer['config']['kernel_size'],
                 strides=conv_layer_node.layer['config']['strides'],
@@ -343,7 +344,7 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
                 per_channel=self.per_channel
             )
         else:
-            conv_bn_layer = QuantDepthwiseConv2DBatchNormalizationLayer(
+            conv_bn_layer = QuantFusedDepthwiseConv2DBatchNormalizationLayer(
                 name=conv_layer_node.layer['config']['name'] + "_bnfolded",
                 kernel_size=conv_layer_node.layer['config']['kernel_size'],
                 strides=conv_layer_node.layer['config']['strides'],
@@ -376,6 +377,7 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
                 quantize=True,
                 quantize_num_bits_weight=self.num_bits_weight,
                 symmetric=self.symmetric,
+                per_channel=self.per_channel
             )
 
         conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)

@@ -10,41 +10,15 @@ import tensorflow as tf
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapper
 
 from callbacks import MaxAccuracyCallback
-from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproxQuantFusedConv2DBatchNormalizationLayer
 from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
-    ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
-from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
-from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
+    ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_conv2D_batch_layer import QuantFusedConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantFusedDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_model import quantize_model
 from datasets import tinyimagenet
 import os
 import numpy as np
-
-
-def lr_warmup_cosine_decay(global_step,
-                           warmup_steps,
-                           hold=0,
-                           total_steps=0,
-                           target_lr=1e-3):
-    # From https://stackabuse.com/learning-rate-warmup-with-cosine-decay-in-keras-and-tensorflow/
-    # Cosine decay
-    # There is no tf.pi so we wrap np.pi as a TF constant
-    global_step = tf.dtypes.cast(global_step, dtype=tf.float32)
-    learning_rate = 0.5 * target_lr * (1 + tf.cos(
-        tf.constant(np.pi) * (global_step - warmup_steps - hold) / float(
-            total_steps - warmup_steps - hold)))
-
-    # Target LR * progress of warmup (=1 at the final warmup step)
-    warmup_lr = target_lr * (global_step / warmup_steps)
-
-    # Choose between `warmup_lr`, `target_lr` and `learning_rate` based on whether `global_step < warmup_steps` and we're still holding.
-    # i.e. warm up if we're still warming up and use cosine decayed lr otherwise
-    if hold > 0:
-        learning_rate = tf.where(global_step > warmup_steps + hold,
-                                 learning_rate, target_lr)
-
-    learning_rate = tf.where(global_step < warmup_steps, warmup_lr, learning_rate)
-    return learning_rate
 
 
 class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
@@ -57,15 +31,41 @@ class WarmUpCosineDecay(keras.optimizers.schedules.LearningRateSchedule, ABC):
         self.hold = hold
 
     def __call__(self, step):
-        lr = lr_warmup_cosine_decay(global_step=step,
-                                    total_steps=self.total_steps,
-                                    warmup_steps=self.warmup_steps,
-                                    target_lr=self.target_lr,
-                                    hold=self.hold)
+        lr = self._lr_warmup_cosine_decay(global_step=step,
+                                          total_steps=self.total_steps,
+                                          warmup_steps=self.warmup_steps,
+                                          target_lr=self.target_lr,
+                                          hold=self.hold)
 
         return tf.where(
             step > self.total_steps, 0.0, lr, name="learning_rate"
         )
+
+    @staticmethod
+    def _lr_warmup_cosine_decay(global_step,
+                                warmup_steps,
+                                hold=0,
+                                total_steps=0,
+                                target_lr=1e-3):
+        # From https://stackabuse.com/learning-rate-warmup-with-cosine-decay-in-keras-and-tensorflow/
+        # Cosine decay
+        # There is no tf.pi so we wrap np.pi as a TF constant
+        global_step = tf.dtypes.cast(global_step, dtype=tf.float32)
+        learning_rate = 0.5 * target_lr * (1 + tf.cos(
+            tf.constant(np.pi) * (global_step - warmup_steps - hold) / float(
+                total_steps - warmup_steps - hold)))
+
+        # Target LR * progress of warmup (=1 at the final warmup step)
+        warmup_lr = target_lr * (global_step / warmup_steps)
+
+        # Choose between `warmup_lr`, `target_lr` and `learning_rate` based on whether `global_step < warmup_steps` and we're still holding.
+        # i.e. warm up if we're still warming up and use cosine decayed lr otherwise
+        if hold > 0:
+            learning_rate = tf.where(global_step > warmup_steps + hold,
+                                     learning_rate, target_lr)
+
+        learning_rate = tf.where(global_step < warmup_steps, warmup_lr, learning_rate)
+        return learning_rate
 
     def get_config(self):
         config = {
@@ -234,10 +234,10 @@ def _freeze_bn_in_model(model: keras.models.Model):
     :param model: Model with fake quantization and batch normalization
     """
     for layer in model.layers:
-        if (isinstance(layer, QuantConv2DBatchLayer) or
-                isinstance(layer, ApproximateQuantConv2DBatchLayer) or
-                isinstance(layer, QuantDepthwiseConv2DBatchNormalizationLayer) or
-                isinstance(layer, ApproximateQuantDepthwiseConv2DBatchNormalizationLayer)):
+        if (isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedConv2DBatchNormalizationLayer) or
+                isinstance(layer, QuantFusedDepthwiseConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer)):
             layer.freeze_bn()
         if isinstance(layer, QuantizeWrapper):
             if isinstance(layer.layer, keras.layers.BatchNormalization):
@@ -311,5 +311,5 @@ if __name__ == "__main__":
         from_checkpoint=args.from_checkpoint,
         verbose=args.verbose,
         start_epoch=args.start_epoch,
-        activation_quant_wait=args.act_quant_wait
+        activation_quant_wait=args.act_quant_wait,
     )

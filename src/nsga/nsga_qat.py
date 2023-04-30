@@ -197,17 +197,25 @@ class QATAnalyzer(NSGAAnalyzer):
     def __str__(self):
         return "cache(%s,%d)" % (self.cache_file, len(self.cache))
 
-    def quantize_model_by_config(self, quant_config):
-        quant_config = quant_config.copy()
-        quant_config.append(8)  # Insert last value a default one, because 0 - 1 = -1 will be default
+    def apply_mask(self, chromosome):
+        quant_config = chromosome.copy()
+        quant_config.append(8)
+        final_quant_config = [quant_config[i] for i in self.mask]
+        config = [
+            {
+                "weight_bits": final_quant_config[i],
+                "activation_bits": 8
+            } for i in range(len(self.mask))
+        ]
+        return config
 
-        final_quant_config = [quant_config[i - 1] for i in self.mask]
-        config = [{"weight_bits": final_quant_config[i], "activation_bits": 8} for i in range(len(self.mask))]
+    def quantize_model_by_config(self, quant_config):
+        config = self.apply_mask(quant_config)
         return quantize_model(self.base_model, config, approx=self.approx, per_channel=self.per_channel,
                               symmetric=self.symmetric)
 
     def get_number_of_quantizable_layers(self):
-        return len(list(filter(lambda x: x != 0, self.mask)))
+        return len(list(filter(lambda x: x != -1, self.mask)))
 
     @property
     def mask(self):
@@ -220,8 +228,8 @@ class QATAnalyzer(NSGAAnalyzer):
                                                        per_channel=self.per_channel, symmetric=self.symmetric)
 
         groups = transformer.get_quantizable_layers_groups()
-        mask = [0 for _ in range(len(groups))]
-        count = 1
+        mask = [-1 for _ in range(len(groups))]
+        count = 0
         for i, group in enumerate(groups):
             if calculate_model_size.calculate_weights_mobilenet_size(self.base_model, only_layers=group,
                                                                      per_channel=self.per_channel,

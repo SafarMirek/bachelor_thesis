@@ -1,3 +1,6 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+
 import abc
 import glob
 import gzip
@@ -12,11 +15,14 @@ from paretoarchive.core import PyBspTreeArchive
 
 
 class NSGAAnalyzer(abc.ABC):
+    """
+    Analyzer for NSGA-II to evaluate chromosomes before parents selection
+    """
 
     @abc.abstractmethod
     def analyze(self, configurations):
         """
-
+        This method analyzes chromosomes and returns them with their evaluation
         :param configurations: List of configurations that needs to be analyzes
         :return: List of configurations with added evaluation of each one
         """
@@ -24,29 +30,59 @@ class NSGAAnalyzer(abc.ABC):
 
 
 class NSGAState:
+    """
+    State of the NSGA-II
+    """
 
     def __init__(self, generation=None, parents=None, offsprings=None):
+        """
+        Constructs NSGAState
+
+        :param generation: Current generation
+        :param parents: Current parents
+        :param offsprings: Current offsprings list
+        """
         self._generation = generation
         self._parents = parents
         self._offsprings = offsprings
         self._restored = False
 
     def get_generation(self):
+        """
+        Returns current number of generationm
+        :return: Number of generation
+        """
         return self._generation
 
     def get_parents(self):
+        """
+        Return current parents
+        :return: List of parents
+        """
         return self._parents
 
     def get_offsprings(self):
+        """
+        Get current offsprings
+        :return: List of offsprings
+        """
         return self._offsprings
 
     def save_to(self, logs_dir):
+        """
+        Saves state to file
+        :param logs_dir: Path to logs directory
+        """
         if self._restored:
             return
         json.dump({"parent": self._parents, "offspring": self._offsprings},
                   gzip.open(logs_dir + "/run.%05d.json.gz" % self._generation, "wt", encoding="utf8"))
 
     def set_offsprings(self, new_offsprings):
+        """
+        Sets offsprings in the state
+        :param new_offsprings: List of offsprings that replaces current list of offsprings
+        """
         self._offsprings = new_offsprings
 
     @classmethod
@@ -68,6 +104,16 @@ class NSGA(abc.ABC):
     """
 
     def __init__(self, logs_dir, parent_size=50, offspring_size=50, generations=25, objectives=None, previous_run=None):
+        """
+        Constructs NSGA
+
+        :param logs_dir: Path to log directory
+        :param parent_size: Number of parents
+        :param offspring_size: number of offsprings
+        :param generations: Number of generations
+        :param objectives: List of watched objectives
+        :param previous_run: Path to previous run to restore from there
+        """
         if logs_dir is None:
             raise ValueError(f"Logs directory needs to be defined")
 
@@ -98,6 +144,10 @@ class NSGA(abc.ABC):
         self.ensure_logs_dir()
 
     def _restore_state(self, previous_run):
+        """
+        Restores state from previous run
+        :param previous_run: Path to previous run log dir
+        """
         df = glob.glob(previous_run + "/run.*.gz")
         if self.logs_dir != previous_run:
             for d in df:
@@ -108,12 +158,20 @@ class NSGA(abc.ABC):
         self.state = NSGAState.restore_from(run_file=d)
 
     def ensure_logs_dir(self):
+        """
+        Ensures logs directory is created
+        """
         try:
             os.makedirs(self.logs_dir)
         except FileExistsError:
-            pass  # Folder already exists
+            pass  # Folder already exists no need to create it
 
     def get_pareto_front(self, values):
+        """
+        Returns pareto front from values
+        :param values: Data
+        :return: pareto front from data by watched objectives (list of indexes in original data)
+        """
 
         def map_obj_list(value):
             return [value[obj[0]] * (-1 if obj[1] else 1) for obj in self.objectives]
@@ -124,9 +182,16 @@ class NSGA(abc.ABC):
         return pareto_ids
 
     def get_current_state(self) -> NSGAState:
+        """
+        Get current state of NSGA
+        :return: Current state of NSGA
+        """
         return self.state
 
     def run_next_generation(self):
+        """
+        Run one NSGA generation
+        """
         current_state = self.get_current_state()
         g = self.get_current_state().get_generation()
         print("Generation %d" % g)
@@ -154,7 +219,7 @@ class NSGA(abc.ABC):
 
             missing = self.parent_size - len(next_parents)
 
-        # generate new candidate solutions:
+        # generate new candidate solutions
         offsprings = self.generate_offsprings(parents=next_parents)
 
         # set new state
@@ -162,7 +227,7 @@ class NSGA(abc.ABC):
 
     def run(self):
         """
-        :return: final parents with their evaluation
+        Runs specified number of generations
         """
         if self.state is None:
             parents = self.get_init_parents()
@@ -174,8 +239,9 @@ class NSGA(abc.ABC):
 
     def generate_offsprings(self, *, parents):
         """
-        :param parents:
-        :return: lists of generates offsprings
+        Generate offsprings from parents using crossover and mutation
+        :param parents: List of parents
+        :return: list of generated offsprings
         """
         offsprings = []
         for i in range(0, self.offspring_size):
@@ -191,15 +257,13 @@ class NSGA(abc.ABC):
         distance = [0 for _ in range(len(par))]
         for obj, asc in self.objectives:
             sorted_values = sorted(park, key=lambda x: x[1][obj])
-            minval, maxval = 0, self.get_maximal()[obj]
+            min_val, max_val = 0, self.get_maximal()[obj]
             distance[sorted_values[0][0]] = float("inf")
             distance[sorted_values[-1][0]] = float("inf")
 
             for i in range(1, len(sorted_values) - 1):
                 distance[sorted_values[i][0]] += abs(sorted_values[i - 1][1][obj] - sorted_values[i + 1][1][obj]) / (
-                        maxval - minval)
-        # print(distance)
-        # print(sorted(distance, key=lambda x:-x))
+                        max_val - min_val)
         return zip(par, distance)
 
     def crowding_reduce(self, par, number):
@@ -212,6 +276,10 @@ class NSGA(abc.ABC):
         return par
 
     def get_analyzer(self):
+        """
+        Get analyzer, if it was not created, initialize it
+        :return: NSGAAnalyzer
+        """
         if self.analyzer is None:
             self.analyzer = self.init_analyzer()
         return self.analyzer
@@ -233,4 +301,7 @@ class NSGA(abc.ABC):
 
     @abc.abstractmethod
     def get_init_parents(self):
+        """
+        Returns initial parents for first population
+        """
         pass

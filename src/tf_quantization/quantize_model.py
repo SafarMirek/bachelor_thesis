@@ -2,11 +2,11 @@ from tensorflow_model_optimization.python.core.quantization.keras import quantiz
 from tensorflow_model_optimization.python.core.quantization.keras.quantize import quantize_annotate_model, \
     quantize_apply, quantize_scope
 
-from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproximateQuantConv2DBatchLayer
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproxQuantFusedConv2DBatchNormalizationLayer
 from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
-    ApproximateQuantDepthwiseConv2DBatchNormalizationLayer
-from tf_quantization.layers.quant_conv2D_batch_layer import QuantConv2DBatchLayer
-from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantDepthwiseConv2DBatchNormalizationLayer
+    ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_conv2D_batch_layer import QuantFusedConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantFusedDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_registry import PerLayerNBitQuantizeRegistry
 from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModelTransformer, \
     PerLayerQuantizeLayoutTransform
@@ -40,10 +40,10 @@ def quantize_model(model, quantization_config, activation_quant_no_affect=False,
     """
 
     with quantize_scope({
-        "ApproximateQuantConv2DBatchLayer": ApproximateQuantConv2DBatchLayer,
-        "QuantConv2DBatchLayer": QuantConv2DBatchLayer,
-        "QuantDepthwiseConv2DBatchNormalizationLayer": QuantDepthwiseConv2DBatchNormalizationLayer,
-        "ApproximateQuantDepthwiseConv2DBatchNormalizationLayer": ApproximateQuantDepthwiseConv2DBatchNormalizationLayer,
+        "ApproximateQuantConv2DBatchLayer": ApproxQuantFusedConv2DBatchNormalizationLayer,
+        "QuantConv2DBatchLayer": QuantFusedConv2DBatchNormalizationLayer,
+        "QuantDepthwiseConv2DBatchNormalizationLayer": QuantFusedDepthwiseConv2DBatchNormalizationLayer,
+        "ApproximateQuantDepthwiseConv2DBatchNormalizationLayer": ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer,
 
     }):
         transformer = PerLayerQuantizeModelTransformer(model, quantization_config, {}, approx=approx,

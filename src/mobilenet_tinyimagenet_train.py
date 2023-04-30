@@ -120,9 +120,9 @@ if __name__ == "__main__":
         epilog='')
 
     parser.add_argument('-e', '--epochs', default=250, type=int)
-    parser.add_argument('-b', '--batch-size', default=256, type=int)
+    parser.add_argument('-b', '--batch-size', default=64, type=int)
 
-    parser.add_argument('--learning-rate', '--lr', default=0.045, type=float)
+    parser.add_argument('--learning-rate', '--lr', default=0.025, type=float)
 
     parser.add_argument("--logs-dir", default="logs/tinyimagenet/mobilenet/32bit")
     parser.add_argument("--checkpoints-dir", default="checkpoints/tinyimagenet/mobilenet/32bit")

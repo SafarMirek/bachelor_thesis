@@ -1,0 +1,51 @@
+[
+  {
+    "title": "Generace - Mobilenet 0.25 (Per-layer asymetrická kvantizace)",
+    "title_en": "Generations - Mobilenet 0.25 (Per-layer asymmetric quantization)",
+    "run_folder": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch",
+    "per_channel": false,
+    "symmetric": false,
+    "approx": true,
+    "act_quant": false,
+    "out": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch",
+    "base_memory": 1957472,
+    "float_accuracy": 0.516,
+    "generations": [
+      10,
+      16
+    ]
+  },
+  {
+    "title": "Generace - Mobilenet 0.25 (Per-channel symetrická kvantizace)",
+    "title_en": "Generations - Mobilenet 0.25 (Per-channel symmetric quantization)",
+    "run_folder": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch",
+    "per_channel": true,
+    "symmetric": true,
+    "approx": true,
+    "act_quant": false,
+    "out": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch",
+    "base_memory": 2047104,
+    "float_accuracy": 0.516,
+    "generations": [
+      5,
+      10
+    ]
+  },
+    {
+    "title": "Generace - Mobilenet 0.25 (Per-channel symetrická kvantizace) (48h)",
+    "title_en": "Generations - Mobilenet 0.25 (Per-channel symmetric quantization) (48h)",
+    "run_folder": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch_48h",
+    "per_channel": true,
+    "symmetric": true,
+    "approx": true,
+    "act_quant": false,
+    "out": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch_48h",
+    "base_memory": 2047104,
+    "float_accuracy": 0.516,
+    "generations": [
+      10,
+      15,
+      21
+    ]
+  }
+]

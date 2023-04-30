@@ -182,8 +182,8 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
                                                        symmetric=self.symmetric)
 
         groups = transformer.get_quantizable_layers_groups()
-        mask = [0 for _ in range(len(groups))]
-        count = 1
+        mask = [-1 for _ in range(len(groups))]
+        count = 0
         for i, group in enumerate(groups):
             if calculate_model_size.calculate_weights_mobilenet_size(base_model, only_layers=group,
                                                                      per_channel=self.per_channel,
@@ -192,12 +192,20 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
                 count = count + 1
         return mask
 
-    def quantize_model_by_config(self, quant_config):
-        quant_config = quant_config.copy()
-        quant_config.append(8)  # Insert last value a default one, because 0 - 1 = -1 will be default
+    def apply_mask(self, chromosome):
+        quant_config = chromosome.copy()
+        quant_config.append(8)
+        final_quant_config = [quant_config[i] for i in self.mask]
+        config = [
+            {
+                "weight_bits": final_quant_config[i],
+                "activation_bits": 8
+            } for i in range(len(self.mask))
+        ]
+        return config
 
-        final_quant_config = [quant_config[i - 1] for i in self.mask]
-        config = [{"weight_bits": final_quant_config[i], "activation_bits": 8} for i in range(len(self.mask))]
+    def quantize_model_by_config(self, quant_config):
+        config = self.apply_mask(quant_config)
         base_model = keras.models.load_model("mobilenet_tinyimagenet.keras")
         return quantize_model(base_model, config, approx=self.approx, per_channel=self.per_channel,
                               symmetric=self.symmetric)

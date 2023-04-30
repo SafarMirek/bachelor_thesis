@@ -114,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument('--warmup', default=0.05, type=float)
 
     parser.add_argument('--multigpu', default=False, action='store_true')
-    parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet.keras", type=str)
+    parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet_025.keras", type=str)
 
     parser.add_argument('--approx', default=False, action='store_true')
     parser.add_argument('--per-channel', default=False, action='store_true')

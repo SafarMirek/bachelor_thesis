@@ -16,17 +16,21 @@ DefaultNBitQuantizeRegistry = tfmot.quantization.keras.experimental.default_n_bi
 
 class PerLayerNBitQuantizeRegistry(quantize_registry.QuantizeRegistry):
     """
-    Quantize registry for per-layer quantization
+    Quantize Registry for per-layer quantization
+
+    This registry combines all options of NBitRegistries and uses the one that is specified by layer configuration
     """
 
     def __init__(self, quantization_config, activation_quant_no_affect=False, per_channel=True, symmetric=True):
         """
-        TODO:
+        Constructs PerLayerNBitQuantizeRegistry
+
         :param quantization_config: List of quantization configs for each layer
         :param activation_quant_no_affect: Disable activation quantization
         :param per_channel: Use per-channel quantization for weights of convolution layers
         :param symmetric: Use symmetric or asymmetric quantization for weights of convolution layers
         """
+
         self._quantization_config = quantization_config
         self.registries = [
             [
@@ -41,7 +45,8 @@ class PerLayerNBitQuantizeRegistry(quantize_registry.QuantizeRegistry):
 
     def get_quantize_config(self, layer: keras.layers.Layer):
         """
-
+        Returns quantize config for specified layer by its configuration,
+        if layer is not contained in provided configuration 8-bit quantization is used
         :param layer: layer to be quantized
         :return: QuantizeConfig for layer
         """
@@ -52,19 +57,21 @@ class PerLayerNBitQuantizeRegistry(quantize_registry.QuantizeRegistry):
             num_weight_bits = self._quantization_config[layer.name]["weight_bits"]
             num_activation_bits = self._quantization_config[layer.name]["activation_bits"]
         else:
-            warnings.warn(f'No configuration found for {layer.name}. Using 8 bit default quantization')
+            warnings.warn(f'No configuration found for {layer.name}. Using 8-bit default quantization')
 
         if isinstance(layer, keras.layers.ReLU):
-            return CustomNBitQuantizeConfig([], [], True,
-                                            keras.initializers.Constant(0.0),
-                                            keras.initializers.Constant(6.0),
-                                            num_bits_weight=num_weight_bits,
-                                            num_bits_activation=num_activation_bits,
-                                            activation_quant_no_affect=self.activation_quant_no_affect
-                                            )
+            # I start quantization range for ReLu on better numbers, it does not make sense to have minium
+            # in negative numbers
+            return NBitQuantizeConfig([], [], True,
+                                      keras.initializers.Constant(0.0),
+                                      keras.initializers.Constant(6.0),
+                                      num_bits_weight=num_weight_bits,
+                                      num_bits_activation=num_activation_bits,
+                                      activation_quant_no_affect=self.activation_quant_no_affect
+                                      )
 
         if isinstance(layer, keras.layers.Conv2D):
-            return CustomNBitConvQuantizeConfig(
+            return NBitConvQuantizeConfig(
                 min_initializer=keras.initializers.Constant(-6.0),
                 max_initializer=keras.initializers.Constant(6.0),
                 num_bits_weight=num_weight_bits,
@@ -85,7 +92,7 @@ class PerLayerNBitQuantizeRegistry(quantize_registry.QuantizeRegistry):
         return self.registries[8 - 1][8 - 1].supports(layer)
 
 
-class CustomNBitConvQuantizeConfig(DefaultNBitQuantizeConfig):
+class NBitConvQuantizeConfig(DefaultNBitQuantizeConfig):
     def __init__(self, min_initializer, max_initializer, num_bits_weight: int = 8, num_bits_activation: int = 8,
                  activation_quant_no_affect=False, symmetric=True, per_axis=True):
         super().__init__(
@@ -98,14 +105,16 @@ class CustomNBitConvQuantizeConfig(DefaultNBitQuantizeConfig):
             symmetric=symmetric,
             narrow_range=True
         )
-        self.activation_quantizer = CustomMovingAverageQuantizer(
+        self.activation_quantizer = DisableableMovingAverageQuantizer(
             num_bits=num_bits_activation, per_axis=False,
             symmetric=False, narrow_range=False, min_initializer=min_initializer, max_initializer=max_initializer,
             no_affect=activation_quant_no_affect)
 
 
-class CustomNBitQuantizeConfig(QuantizeConfig):
-    """QuantizeConfig for non recurrent Keras layers."""
+class NBitQuantizeConfig(QuantizeConfig):
+    """
+    TODO: Add docs
+    """
 
     def __init__(self, weight_attrs, activation_attrs, quantize_output, min_initializer, max_initializer,
                  num_bits_weight: int = 8, num_bits_activation: int = 8, activation_quant_no_affect=False):
@@ -116,12 +125,11 @@ class CustomNBitQuantizeConfig(QuantizeConfig):
         self._num_bits_activation = num_bits_activation
         self._activation_quant_no_affect = activation_quant_no_affect
 
-        # TODO(pulkitb): For some layers such as Conv2D, per_axis should be True.
-        # Add mapping for which layers support per_axis.
+        # TODO: Add mapping for which layers support per_axis.
         self.weight_quantizer = quantizers.LastValueQuantizer(
             num_bits=num_bits_weight, per_axis=False,
             symmetric=True, narrow_range=True)  # weight
-        self.activation_quantizer = CustomMovingAverageQuantizer(
+        self.activation_quantizer = DisableableMovingAverageQuantizer(
             num_bits=num_bits_activation, per_axis=False,
             symmetric=False, narrow_range=False, min_initializer=min_initializer,
             max_initializer=max_initializer, no_affect=activation_quant_no_affect)  # activation/output
@@ -169,20 +177,14 @@ class CustomNBitQuantizeConfig(QuantizeConfig):
 
     @classmethod
     def from_config(cls, config):
-        """Instantiates a `DefaultNBitQuantizeConfig` from its config.
-
-        Args:
-            config: Output of `get_config()`.
-
-        Returns:
-            A `DefaultNBitQuantizeConfig` instance.
+        """
+        Instantiates a `NBitQuantizeConfig` from its config.
+        :param config: Output of `get_config()`.
+        :return: A `NBitQuantizeConfig` instance.
         """
         return cls(**config)
 
     def get_config(self):
-        # TODO(pulkitb): Add weight and activation quantizer to config.
-        # Currently it's created internally, but ideally the quantizers should be
-        # part of the constructor and passed in from the registry.
         return {
             'weight_attrs': self.weight_attrs,
             'activation_attrs': self.activation_attrs,
@@ -193,24 +195,27 @@ class CustomNBitQuantizeConfig(QuantizeConfig):
         }
 
 
-class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
-    """Quantize tensor based on a moving average of values across batches."""
+class DisableableMovingAverageQuantizer(_QuantizeHelper, Quantizer):
+    """
+    Quantize tensor based on a moving average of values across batches with option to disable effect for training
+    """
 
     def __init__(self, num_bits, per_axis, symmetric, narrow_range, min_initializer, max_initializer, no_affect=False):
-        """Construct a MovingAverageQuantizer.
-
-        This is an experimental API not subject to backward compatibility.
-
-        Args:
-          num_bits: Number of bits for quantization
-          per_axis: Whether to apply per_axis quantization. The last dimension is
-            used as the axis.
-          symmetric: If true, use symmetric quantization limits instead of training
-            the minimum and maximum of each quantization range separately.
-          narrow_range: In case of 8 bits, narrow_range nudges the quantized range
-            to be [-127, 127] instead of [-128, 127]. This ensures symmetric
-            range has 0 as the centre.
         """
+        Construct a MovingAverageQuantizer.
+
+        :param num_bits: Number of bits for quantization
+        :param per_axis: Whether to apply per_axis quantization. The last dimension is used as the axis.
+        :param symmetric: If true, use symmetric quantization limits instead of training
+            the minimum and maximum of each quantization range separately.
+        :param narrow_range: In case of 8 bits, narrow_range nudges the quantized range
+            to be [-127, 127] instead of [-128, 127]. This ensures symmetric range has 0 as the centre.
+        :param min_initializer: Initializer of minimum of quantization range
+        :param max_initializer:Initializer of maximum of quantization range
+        :param no_affect: If the quantization effect should be disabled for training, this allows model to enter
+            more stable state in the beginning of training
+        """
+
         self.num_bits = num_bits
         self.per_axis = per_axis
         self.symmetric = symmetric
@@ -278,7 +283,7 @@ class CustomMovingAverageQuantizer(_QuantizeHelper, Quantizer):
         }
 
     def __eq__(self, other):
-        if not isinstance(other, CustomMovingAverageQuantizer):
+        if not isinstance(other, DisableableMovingAverageQuantizer):
             return False
 
         return (self.num_bits == other.num_bits and
