@@ -62,6 +62,96 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
         else:
             self.weights_quantizer = None
 
+    def build(self, input_shape):
+        super().build(input_shape)
+
+        self.axis = tf_utils.validate_axis(self.axis, input_shape)
+        conv_output_shape = self.compute_output_shape(input_shape)
+
+        axis_to_dim = {x: conv_output_shape.dims[x].value for x in self.axis}
+        for x in axis_to_dim:
+            if axis_to_dim[x] is None:
+                raise ValueError(
+                    "Input has undefined `axis` dimension. Received input "
+                    f"with shape {tuple(conv_output_shape)} "
+                    f"and axis={tuple(self.axis)}"
+                )
+
+        if len(axis_to_dim) == 1:
+            # Single axis batch norm (most common/default use-case)
+            param_shape = (list(axis_to_dim.values())[0],)
+        else:
+            # Parameter shape is the original shape but with 1 in all non-axis
+            # dims
+            param_shape = [
+                axis_to_dim[i] if i in axis_to_dim else 1 for i in range(self.conv_output_shape.rank)
+            ]
+        self._param_shape = param_shape
+        if self.scale:
+            self.gamma = self.add_weight(
+                name="gamma",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.gamma_initializer,
+                regularizer=self.gamma_regularizer,
+                constraint=self.gamma_constraint,
+                trainable=True,
+                experimental_autocast=False,
+            )
+        else:
+            self.gamma = None
+
+        if self.center:
+            self.beta = self.add_weight(
+                name="beta",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.beta_initializer,
+                regularizer=self.beta_regularizer,
+                constraint=self.beta_constraint,
+                trainable=True,
+                experimental_autocast=False,
+            )
+        else:
+            self.beta = None
+
+        try:
+            # Disable variable partitioning when creating the moving mean and
+            # variance
+            if hasattr(self, "_scope") and self._scope:
+                partitioner = self._scope.partitioner
+                self._scope.set_partitioner(None)
+            else:
+                partitioner = None
+            self.moving_mean = self.add_weight(
+                name="moving_mean",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.moving_mean_initializer,
+                synchronization=tf.VariableSynchronization.ON_READ,
+                trainable=False,
+                aggregation=tf.VariableAggregation.MEAN,
+                experimental_autocast=False,
+            )
+
+            self.moving_variance = self.add_weight(
+                name="moving_variance",
+                shape=param_shape,
+                dtype=self._param_dtype,
+                initializer=self.moving_variance_initializer,
+                synchronization=tf.VariableSynchronization.ON_READ,
+                trainable=False,
+                aggregation=tf.VariableAggregation.MEAN,
+                experimental_autocast=False,
+            )
+        finally:
+            if partitioner:
+                self._scope.set_partitioner(partitioner)
+
+        self._build_quantizer_weights()
+
+        self.built = True
+
     def get_config(self):
         base_config = super().get_config()
         config = {
