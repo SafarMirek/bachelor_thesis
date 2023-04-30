@@ -1,5 +1,6 @@
 import tensorflow as tf
 from keras import initializers, regularizers, constraints, backend
+from keras.utils import tf_utils
 from tensorflow import keras
 from tensorflow_model_optimization.python.core.quantization.keras import quantizers
 
