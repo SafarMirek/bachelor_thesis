@@ -28,9 +28,9 @@ Switch to source directory:
 $ cd src
 ```
 
-To run NSGA-II for per-layer assymetric quantization use:
+To run NSGA-II for per-layer assymetric quantization with approximate solution for batch normalization folding use:
 ```shell
-$ python3 run_nsga.py --generations 20 --parent-size 16 --offspring-size 16 --logs-dir <nsga_run_log_dir>
+$ python3 run_nsga.py --generations 20 --parent-size 16 --offspring-size 16 --logs-dir <nsga_run_log_dir> --approx
 ```
 By default it uses pre-trained mobilenet model saved as `mobilenet_tinyimagenet_025.keras`,
 to use different pre-trained model, specify parameter `--base-model-path`.

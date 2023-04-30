@@ -40,10 +40,10 @@ def quantize_model(model, quantization_config, activation_quant_no_affect=False,
     """
 
     with quantize_scope({
-        "ApproximateQuantConv2DBatchLayer": ApproxQuantFusedConv2DBatchNormalizationLayer,
-        "QuantConv2DBatchLayer": QuantFusedConv2DBatchNormalizationLayer,
-        "QuantDepthwiseConv2DBatchNormalizationLayer": QuantFusedDepthwiseConv2DBatchNormalizationLayer,
-        "ApproximateQuantDepthwiseConv2DBatchNormalizationLayer": ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer,
+        "ApproxQuantFusedConv2DBatchNormalizationLayer": ApproxQuantFusedConv2DBatchNormalizationLayer,
+        "QuantFusedConv2DBatchNormalizationLayer": QuantFusedConv2DBatchNormalizationLayer,
+        "QuantFusedDepthwiseConv2DBatchNormalizationLayer": QuantFusedDepthwiseConv2DBatchNormalizationLayer,
+        "ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer": ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer,
 
     }):
         transformer = PerLayerQuantizeModelTransformer(model, quantization_config, {}, approx=approx,
