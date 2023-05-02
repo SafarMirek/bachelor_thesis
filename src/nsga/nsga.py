@@ -1,5 +1,5 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
-# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
 import abc
 import glob
@@ -252,9 +252,14 @@ class NSGA(abc.ABC):
 
         return offsprings
 
-    def crowding_distance(self, par):
-        park = list(enumerate(par))
-        distance = [0 for _ in range(len(par))]
+    def crowding_distance(self, pareto_front):
+        """
+        Calculates crowding distance for each individual
+        :param pareto_front: Set of individuals
+        :return: list of pairs of individual and its crowding distance
+        """
+        park = list(enumerate(pareto_front))
+        distance = [0 for _ in range(len(pareto_front))]
         for obj, asc in self.objectives:
             sorted_values = sorted(park, key=lambda x: x[1][obj])
             min_val, max_val = 0, self.get_maximal()[obj]
@@ -264,16 +269,22 @@ class NSGA(abc.ABC):
             for i in range(1, len(sorted_values) - 1):
                 distance[sorted_values[i][0]] += abs(sorted_values[i - 1][1][obj] - sorted_values[i + 1][1][obj]) / (
                         max_val - min_val)
-        return zip(par, distance)
+        return zip(pareto_front, distance)
 
-    def crowding_reduce(self, par, number):
-        par = par
-        while len(par) > number:
-            vals = self.crowding_distance(par)
+    def crowding_reduce(self, pareto_front, number):
+        """
+        Reduces pareto front to only <number> of individuals based on crowding distance
+        :param pareto_front: Set of individuals
+        :param number: Required number of individuals
+        :return: reduced set
+        """
+        pareto_front = pareto_front
+        while len(pareto_front) > number:
+            vals = self.crowding_distance(pareto_front)
             vals = sorted(vals, key=lambda x: -x[1])  # sort by distance descending
 
-            par = [x[0] for x in vals[:-1]]  # remove last
-        return par
+            pareto_front = [x[0] for x in vals[:-1]]  # remove last
+        return pareto_front
 
     def get_analyzer(self):
         """

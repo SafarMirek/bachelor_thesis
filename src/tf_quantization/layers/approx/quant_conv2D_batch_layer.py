@@ -1,5 +1,7 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+
 import tensorflow as tf
-from keras.utils import tf_utils
 from keras.utils import control_flow_util
 
 from tf_quantization.layers.base.quant_fused_conv2D_batch_norm_layer_base import \

@@ -1,3 +1,6 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+
 import tensorflow as tf
 from keras import initializers, regularizers, constraints, backend
 from keras.utils import tf_utils

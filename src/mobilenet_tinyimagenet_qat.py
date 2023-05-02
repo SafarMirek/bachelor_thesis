@@ -1,5 +1,5 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
-# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
 import argparse
 from abc import ABC

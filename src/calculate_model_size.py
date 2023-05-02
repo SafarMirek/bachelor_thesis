@@ -1,5 +1,5 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
-# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
 import keras.layers
 import numpy as np
@@ -32,7 +32,7 @@ def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, on
             num_bits_weight = layer.quantize_num_bits_weight
             layer_size = layer_size + num_bits_weight * np.prod(layer.kernel.shape)
 
-            # Quant koeficients
+            # Quant coefficients
             if per_channel:
                 layer_size = layer_size + 32 * (layer.kernel.shape[3])
                 if not symmetric:
@@ -52,7 +52,7 @@ def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, on
 
             layer_size = layer_size + num_bits_weight * np.prod(layer.depthwise_kernel.shape)
 
-            # Quant koeficients
+            # Quant coefficients
             if per_channel:
                 layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
                 if not symmetric:

@@ -1,5 +1,5 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
-# Author: Miroslav Safar (xsafar23@fit.vutbr.cz)
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 # This script was inspired by ANDREW TU from https://www.kaggle.com/code/tusonggao/create-imagenet-train-subset-100k
 
 import argparse

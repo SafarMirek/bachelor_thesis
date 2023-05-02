@@ -1,3 +1,6 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+
 import warnings
 
 import keras.layers
@@ -67,10 +70,12 @@ class PerLayerNBitQuantizeRegistry(quantize_registry.QuantizeRegistry):
                                       keras.initializers.Constant(6.0),
                                       num_bits_weight=num_weight_bits,
                                       num_bits_activation=num_activation_bits,
-                                      activation_quant_no_affect=self.activation_quant_no_affect
+                                      activation_quant_no_affect=self.activation_quant_no_affect,
+                                      symmetric=self.symmetric
                                       )
 
         if isinstance(layer, keras.layers.Conv2D):
+            # This adds support for activation_quant_no_affect in conv2D layer
             return NBitConvQuantizeConfig(
                 min_initializer=keras.initializers.Constant(-6.0),
                 max_initializer=keras.initializers.Constant(6.0),
@@ -93,12 +98,22 @@ class PerLayerNBitQuantizeRegistry(quantize_registry.QuantizeRegistry):
 
 
 class NBitConvQuantizeConfig(DefaultNBitQuantizeConfig):
+    """
+    Configuration of conv layer quantization with option do disable activation quantization and choose used quantization scheme
+    """
+
     def __init__(self, min_initializer, max_initializer, num_bits_weight: int = 8, num_bits_activation: int = 8,
                  activation_quant_no_affect=False, symmetric=True, per_axis=True):
         super().__init__(
             ['kernel'], ['activation'], False,
             num_bits_weight=num_bits_weight,
             num_bits_activation=num_bits_activation)
+        self._min_initializer = min_initializer
+        self._max_initializer = max_initializer
+        self.activation_quant_no_affect = activation_quant_no_affect
+        self.symmetric = symmetric
+        self.per_axis = per_axis
+
         self.weight_quantizer = LastValueQuantizer(
             num_bits=num_bits_weight,
             per_axis=per_axis,
@@ -110,25 +125,45 @@ class NBitConvQuantizeConfig(DefaultNBitQuantizeConfig):
             symmetric=False, narrow_range=False, min_initializer=min_initializer, max_initializer=max_initializer,
             no_affect=activation_quant_no_affect)
 
+    def get_config(self):
+        """
+        Returns configuration of this class
+        """
+        return {
+            'min_initializer': self._min_initializer,
+            'max_initializer': self._max_initializer,
+            'symmetric': self.symmetric,
+            'per_axis': self.per_axis,
+            'activation_quant_no_affect': self.activation_quant_no_affect,
+            'weight_attrs': self.weight_attrs,
+            'activation_attrs': self.activation_attrs,
+            'quantize_output': self.quantize_output,
+            'num_bits_weight': self._num_bits_weight,
+            'num_bits_activation': self._num_bits_activation
+        }
+
 
 class NBitQuantizeConfig(QuantizeConfig):
     """
-    TODO: Add docs
+    NBit quantize config that support min/max initializer and disabling activation quantization
     """
 
     def __init__(self, weight_attrs, activation_attrs, quantize_output, min_initializer, max_initializer,
-                 num_bits_weight: int = 8, num_bits_activation: int = 8, activation_quant_no_affect=False):
+                 num_bits_weight: int = 8, num_bits_activation: int = 8, activation_quant_no_affect=False,
+                 symmetric=True):
         self.weight_attrs = weight_attrs
         self.activation_attrs = activation_attrs
         self.quantize_output = quantize_output
         self._num_bits_weight = num_bits_weight
         self._num_bits_activation = num_bits_activation
         self._activation_quant_no_affect = activation_quant_no_affect
+        self._min_initializer = min_initializer
+        self._max_initializer = max_initializer
+        self.symmetric = symmetric
 
-        # TODO: Add mapping for which layers support per_axis.
         self.weight_quantizer = quantizers.LastValueQuantizer(
             num_bits=num_bits_weight, per_axis=False,
-            symmetric=True, narrow_range=True)  # weight
+            symmetric=symmetric, narrow_range=True)  # weight
         self.activation_quantizer = DisableableMovingAverageQuantizer(
             num_bits=num_bits_activation, per_axis=False,
             symmetric=False, narrow_range=False, min_initializer=min_initializer,
@@ -191,7 +226,10 @@ class NBitQuantizeConfig(QuantizeConfig):
             'quantize_output': self.quantize_output,
             'num_bits_weight': self._num_bits_weight,
             'num_bits_activation': self._num_bits_activation,
-            "activation_quant_no_affect": self._activation_quant_no_affect
+            "activation_quant_no_affect": self._activation_quant_no_affect,
+            "min_initializer": initializers.serialize(self._min_initializer),
+            "max_initializer": initializers.serialize(self._max_initializer),
+            "symmetric": self.symmetric
         }
 
 

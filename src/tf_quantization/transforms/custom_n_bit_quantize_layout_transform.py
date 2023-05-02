@@ -1,18 +1,5 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""Default 8-bit layout transformation for quantization."""
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
 from __future__ import absolute_import
 from __future__ import division
@@ -39,9 +26,11 @@ LayerNode = transforms.LayerNode
 LayerPattern = transforms.LayerPattern
 
 
-class CustomNBitQuantizeLayoutTransform(
-    quantize_layout_transform.QuantizeLayoutTransform):
-    """Default model transformations."""
+class CustomNBitQuantizeLayoutTransform(quantize_layout_transform.QuantizeLayoutTransform):
+    """
+    This transform is equivalent to DefaultNBitQuantizeLayoutTransform but adds
+    DepthwiseConv2DBatchNormReluQuantize and Conv2DBatchNormReluQuantize transforms
+    """
 
     def __init__(self, only_layers, num_bits_weight: int = 8, num_bits_activation: int = 8, approx=False,
                  symmetric=True, per_channel=True):
@@ -56,12 +45,12 @@ class CustomNBitQuantizeLayoutTransform(
             raise ValueError("It does not make sense to use not approx scheme with per_channel quantization")
 
     def apply(self, model, layer_quantize_map):
-        """Implement default 8-bit transforms.
+        """
+        Implement default 8-bit transforms and
+        our DepthwiseConv2DBatchNormReluQuantize and Conv2DBatchNormReluQuantize transforms
 
-        Currently this means the following.
-          1. Pull activations into layers, and apply fuse activations. (TODO)
-          2. Modify range in incoming layers for Concat. (TODO)
-          3. Fuse Conv2D/DepthwiseConv2D + BN into single layer.
+        Currently this function handles Fusing Conv2D/DepthwiseConv2D (+ BN) + ReLU into single layer
+        by ensuring quantization is not applied between them
 
         Args:
           model: Keras model to be quantized.
@@ -70,8 +59,7 @@ class CustomNBitQuantizeLayoutTransform(
             layers.
 
         Returns:
-          (Transformed Keras model to better match TensorFlow Lite backend, updated
-          layer quantize map.)
+          Transformed model where quantization better match deployment
         """
 
         transforms = [
@@ -153,6 +141,11 @@ class CustomNBitQuantizeLayoutTransform(
 
 
 class Conv2DBatchNormReluQuantize(transforms.Transform):
+    """
+    Transformation that replaces Conv2D + BN + ReLU with (Approx)QuantFusedConv2DBatchNormalizationLayer + ReLU
+
+    This ensures batch normalization is handled properly if per-tensor weight quantization is used
+    """
 
     def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False,
                  symmetric: bool = True, per_channel: bool = True):
@@ -285,6 +278,12 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
 
 
 class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
+    """
+    Transformation that replaces DepthwiseConv2D + BN + ReLU with
+    (Approx)QuantFusedDepthwiseConv2DBatchNormalizationLayer + ReLU
+
+    This ensures batch normalization is handled properly if per-tensor weight quantization is used
+    """
 
     def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False,
                  symmetric: bool = True, per_channel: bool = True):
@@ -419,10 +418,12 @@ class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
 
 
 def _get_quantize_config(layer_node):
+    """Extracts quantization config from layer metadata"""
     return layer_node.metadata.get('quantize_config')
 
 
 def _has_custom_quantize_config(*layer_nodes):
+    """Checks if layer has quantization config in its metadata"""
     for layer_node in layer_nodes:
         if _get_quantize_config(layer_node) is not None:
             return True

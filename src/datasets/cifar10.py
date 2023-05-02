@@ -1,9 +1,12 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+
 import tensorflow_datasets as tfds
 import tensorflow as tf
 
 
-def get_imagenet_mini_dataset(split="train"):
-    """This method process and returns imagenet-mini dataset"""
+def get_cifar10_dataset(split="train"):
+    """This method process and returns cifar10 dataset"""
     return tfds.load('cifar10', split=split, shuffle_files=True)
 
 
@@ -14,4 +17,9 @@ def preprocess_image(data, image_size=(32, 32)):
 
 
 def get_preprocess_image_fn(image_size=(32, 32)):
+    """
+    Returns method for preprocessing image to specified imagesize and values in <-1;1>
+    :param image_size: Requested image size
+    :return: preprocess_image function
+    """
     return lambda data: preprocess_image(data, image_size=image_size)

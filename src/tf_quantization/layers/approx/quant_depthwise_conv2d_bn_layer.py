@@ -1,14 +1,10 @@
-import tensorflow as tf
-from tensorflow import keras
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
-from keras import constraints
-from keras import initializers
-from keras import regularizers
+import tensorflow as tf
 
 from keras import backend
-from keras.utils import tf_utils
 from keras.utils import control_flow_util
-from tensorflow_model_optimization.python.core.quantization.keras import quantizers
 
 from tf_quantization.layers.base.quant_fused_depthwise_conv2D_batch_norm_layer_base import \
     QuantFusedDepthwiseConv2DBatchNormalizationLayerBase

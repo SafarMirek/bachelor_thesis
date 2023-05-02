@@ -1,3 +1,6 @@
+# Project: Bachelor Thesis: Automated Quantization of Neural Networks
+# Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+
 from tensorflow_model_optimization.python.core.quantization.keras import quantize_scheme
 from tensorflow_model_optimization.python.core.quantization.keras.quantize import quantize_annotate_model, \
     quantize_apply, quantize_scope
@@ -60,6 +63,8 @@ def quantize_model(model, quantization_config, activation_quant_no_affect=False,
         for layer in layer_group_map.keys():
             layer_quantization_config_map[layer] = quantization_config[layer_group_map[layer]]
 
+        # Create PerLayerNBitQuantizeScheme that can be provided to quantize_apply
+        # it makes quantize_apply use our per-layer model transformer and per layer quantize registry
         scheme = PerLayerNBitQuantizeScheme(
             transformer_fn=lambda: PerLayerQuantizeLayoutTransform(quantization_config, approx=approx,
                                                                    symmetric=symmetric, per_channel=per_channel),
