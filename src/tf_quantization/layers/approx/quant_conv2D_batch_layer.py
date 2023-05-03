@@ -35,38 +35,36 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
         return (std_dev / gamma) * outputs
 
-    def call(self, inputs, training=None, **kwargs):
-        input_shape = inputs.shape
+    def _call__bn_frozen(self, inputs, input_shape, training):
+        """
+        Execution graph for validation and training with frozen batch normalization
+        """
+        moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
+        if not self.per_channel:
+            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=self.kernel)
+            folded_weights = self._apply_quantizer_if_defined(training=training, folded_weights=folded_weights)
+        else:
+            folded_weights = self.kernel
+            folded_weights = self._apply_quantizer_if_defined(training=training, folded_weights=folded_weights)
+            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=folded_weights)
 
-        if training is None:
-            training = tf.keras.backend.learning_phase()
+        outputs = self.convolution_op(inputs, folded_weights)
+        if self.use_bias:
+            outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
+        else:
+            outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
 
-        if self._is_causal:  # Apply causal padding to inputs for Conv1D.
-            inputs = tf.pad(inputs, self._compute_causal_padding(inputs))
+        if not tf.executing_eagerly() and input_shape.rank:
+            # Infer the static output shape:
+            out_shape = self.compute_output_shape(input_shape)
+            outputs.set_shape(out_shape)
 
-        if not training:
-            moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-            if not self.per_channel:
-                folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=self.kernel)
-                folded_weights = self._apply_quantizer_if_defined(training=training, folded_weights=folded_weights)
-            else:
-                folded_weights = self.kernel
-                folded_weights = self._apply_quantizer_if_defined(training=training, folded_weights=folded_weights)
-                folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=folded_weights)
+        return outputs
 
-            outputs = self.convolution_op(inputs, folded_weights)
-            if self.use_bias:
-                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
-            else:
-                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
-
-            if not tf.executing_eagerly() and input_shape.rank:
-                # Infer the static output shape:
-                out_shape = self.compute_output_shape(input_shape)
-                outputs.set_shape(out_shape)
-
-            return outputs
-
+    def _call_with_bn(self, inputs, input_shape, training):
+        """
+        Execution graph for training with not fronzen batch normalozation
+        """
         moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
 
         if not self.per_channel:
@@ -74,23 +72,9 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
         else:
             folded_weights = self.kernel
 
-        if self.weights_quantizer is not None:
-            folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                             weights=self._quantizer_weights)
-
-        if self.is_frozen() and self.per_channel:
-            # If bn is frozen we need to fold weights, since ranges for per-channel quantization are not
-            # scaled we need to scale weights after quantization and not before it
-            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=folded_weights)
+        folded_weights = self._apply_quantizer_if_defined(training=training, folded_weights=folded_weights)
 
         outputs = self.convolution_op(inputs, folded_weights)
-
-        if self.is_frozen():
-            if self.use_bias:
-                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
-            else:
-                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
-            return outputs
 
         # * ( sqrt(var) / gamma)
         if not self.per_channel:

@@ -11,8 +11,10 @@ from tensorflow_model_optimization.python.core.quantization.keras.experimental.d
 from tf_quantization.transforms import custom_n_bit_quantize_layout_transform
 
 
-class PerLayerQuantizeLayoutTransform(
-    quantize_layout_transform.QuantizeLayoutTransform):
+class PerLayerQuantizeLayoutTransform(quantize_layout_transform.QuantizeLayoutTransform):
+    """
+        Ensures quantization is not places between layers that will be fused
+    """
 
     def __init__(self, quantize_config, approx, per_channel, symmetric):
         self._quantize_config = quantize_config
@@ -21,16 +23,25 @@ class PerLayerQuantizeLayoutTransform(
         self._symmetric = symmetric
 
     def apply(self, model, layer_quantize_map):
+        """
+        Creates PerLayerQuantizeModelTransformer for model and makes transform
+        :param model: Model
+        :param layer_quantize_map: Map of layers metadata
+        :return: transformed model
+        """
         return PerLayerQuantizeModelTransformer(model, self._quantize_config, layer_quantize_map,
                                                 self._approx, self._per_channel, self._symmetric).transform()
 
 
 class PerLayerQuantizeModelTransformer:
+    """
+    Splits model layers into quantizable groups, that can have different quantization config
+    and original model transformer can be used independently for each group instead for a whole model
+    """
     _layers_groups = []
     _layers_group_index_map = {}
 
     def __init__(self, model, quantize_config, layer_quantize_map, approx, per_channel, symmetric):
-        # Taken from https://github.com/tensorflow/model-optimization
         if not self._is_sequential_or_functional_model(model):
             raise ValueError(
                 'Only tf.keras sequential or functional models can be transformed.')
@@ -45,13 +56,17 @@ class PerLayerQuantizeModelTransformer:
 
     @staticmethod
     def _is_sequential_or_functional_model(model):
-        """Taken from https://github.com/tensorflow/model-optimization"""
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         return PerLayerQuantizeModelTransformer._is_functional_model(model) or isinstance(
             model, keras.Sequential)
 
     @staticmethod
     def _is_functional_model(model):
-        """Taken from https://github.com/tensorflow/model-optimization"""
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         return isinstance(model, keras.Model) \
             and not isinstance(model, keras.Sequential) \
             and model._is_graph_network  # pylint: disable=protected-access
@@ -113,6 +128,12 @@ class PerLayerQuantizeModelTransformer:
 
     @staticmethod
     def _get_subgraphs(nodes, edges):
+        """
+        Get all graph components using BFS algorithm
+        :param nodes: Nodes
+        :param edges: Edges between nodes
+        :return: sorted list of graph components
+        """
         graphs = []
         remaining = set(nodes)
 
@@ -156,7 +177,10 @@ class PerLayerQuantizeModelTransformer:
         return True
 
     def _match_layer_with_inputs(self, layer, pattern):
-        """Match pattern at this layer, and continue to match at its inputs."""
+        """
+        Match pattern at this layer, and continue to match at its inputs.
+        From: https://github.com/tensorflow/model-optimization
+        """
 
         if not self._match_layer(layer, pattern):
             return None
@@ -181,7 +205,7 @@ class PerLayerQuantizeModelTransformer:
             return None
 
         # Inbound layers can have different order from the list of input patterns.
-        # TODO(pulkitb): Fix by checking all permutations.
+        # Fix by checking all permutations.
         input_match_layer_nodes = []
         for input_layer, pattern_ in zip(input_layers, pattern.inputs):
             match_layer_node = self._match_layer_with_inputs(
@@ -193,7 +217,10 @@ class PerLayerQuantizeModelTransformer:
         return input_match_layer_nodes + [layer['config']['name']]
 
     def _get_input_layer_names(self, layer):
-        """Get the names of a layer's input layers."""
+        """
+        Get the names of a layer's input layers.
+        From: https://github.com/tensorflow/model-optimization
+        """
         if self._is_functional_model(self.model):
             inbound_nodes = layer['inbound_nodes']
             return [connection_info[0] for connection_info in inbound_nodes[0]]
@@ -213,17 +240,22 @@ class PerLayerQuantizeModelTransformer:
         ]
 
     def _find_pattern(self, pattern, matched_layers=None):
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         for layer in self._config['layers']:
             if matched_layers and layer['config']['name'] in matched_layers:
                 continue
-            match_layer = self._match_layer_with_inputs(
-                layer, pattern, is_head_node=True)
+            match_layer = self._match_layer_with_inputs(layer, pattern)
             if match_layer:
                 return match_layer
 
         return None
 
     def _get_layer_names(self, layer_node):
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         result = [layer_node.layer['config']['name']]
         for input_layer in layer_node.input_layers:
             result.extend(self._get_layer_names(input_layer))

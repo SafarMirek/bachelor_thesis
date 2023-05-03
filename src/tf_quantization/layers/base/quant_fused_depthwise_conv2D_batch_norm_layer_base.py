@@ -1,5 +1,6 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
 # Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+import abc
 
 import tensorflow as tf
 from keras import initializers, regularizers, constraints, backend
@@ -67,6 +68,9 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
             self.weights_quantizer = None
 
     def build(self, input_shape):
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         super().build(input_shape)
 
         self.axis = tf_utils.validate_axis(self.axis, input_shape)
@@ -196,6 +200,10 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
         )
 
     def _assign_moving_average(self, variable, value, momentum, inputs_size):
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
+
         def calculate_update_delta():
             decay = tf.convert_to_tensor(1.0 - momentum, name="decay")
             if decay.dtype != variable.dtype.base_dtype:
@@ -219,6 +227,9 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
                     )
 
     def _assign_new_value(self, variable, value):
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         with backend.name_scope("AssignNewValue") as scope:
             if tf.compat.v1.executing_eagerly_outside_functions():
                 return variable.assign(value, name=scope)
@@ -227,12 +238,18 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
                     return tf.compat.v1.assign(variable, value, name=scope)
 
     def _build_quantizer_weights(self):
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         if self.weights_quantizer is not None:
             channellast_kernel = tf.transpose(self.depthwise_kernel, [0, 1, 3, 2])
             self._quantizer_weights = self.weights_quantizer.build(channellast_kernel.shape, "weights", self)
 
     @property
     def _param_dtype(self):
+        """
+        From: https://github.com/tensorflow/model-optimization
+        """
         # Raise parameters of fp16 batch norm to fp32
         if self.dtype == tf.float16 or self.dtype == tf.bfloat16:
             return tf.float32
@@ -250,3 +267,22 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
 
     def is_frozen(self):
         return self.frozen_bn
+
+    def call(self, inputs, training=None, **kwargs):
+        input_shape = inputs.shape
+
+        if training is None:
+            training = tf.keras.backend.learning_phase()
+
+        if not training or self.is_frozen():
+            return self._call__bn_frozen(inputs, training)
+        else:
+            return self._call_with_bn(inputs, input_shape, training)
+
+    @abc.abstractmethod
+    def _call__bn_frozen(self, inputs, training):
+        pass
+
+    @abc.abstractmethod
+    def _call_with_bn(self, inputs, input_shape, training):
+        pass

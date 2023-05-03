@@ -1,32 +1,30 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
 # Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
-import glob
 import gzip
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-import keras
-import numpy as np
 import tensorflow as tf
 
 import calculate_model_size
 import mobilenet_tinyimagenet_qat
 import nsga.nsga_qat
 from nsga.nsga import NSGAAnalyzer
-from tf_quantization.quantize_model import quantize_model
-from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModelTransformer
 
 from queue import Queue
 
 
 class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
+    """
+    NSGA-II for proposed system, it uses MultiGPU QAT Analyzer for evaluation of individuals
+    """
 
-    def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
+    def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
                  per_channel=True, symmetric=True, learning_rate=0.2):
-        super().__init__(logs_dir, base_model, parent_size, offspring_size, generations, batch_size, qat_epochs,
+        super().__init__(logs_dir, base_model_path, parent_size, offspring_size, generations, batch_size, qat_epochs,
                          previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric,
                          learning_rate)
 
@@ -38,70 +36,28 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
                                    approx=self.approx, activation_quant_wait=self.activation_quant_wait,
                                    per_channel=self.per_channel, symmetric=self.symmetric,
                                    logs_dir_pattern=logs_dir_pattern,
-                                   checkpoints_dir_pattern=checkpoints_dir_pattern)
+                                   checkpoints_dir_pattern=checkpoints_dir_pattern,
+                                   base_model_path=self.base_model_path)
 
 
-class MultiGPUQATAnalyzer(NSGAAnalyzer):
-    def __init__(self, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
+class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
+    """
+    Analyzer for QATNSGA
+
+    This analyzer analyzes individuals by running a few epochs using quantization-aware training
+    and tracking best achieved Top-1 accuracy
+
+    This analyzer supports Multi GPU evaluation,
+    multiple configurations is evaluated at the same time on multiple GPUs
+    """
+
+    def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
                  logs_dir_pattern=None, checkpoints_dir_pattern=None):
-        self.batch_size = batch_size
-        self.qat_epochs = qat_epochs
-        self.bn_freeze = bn_freeze
-        self.learning_rate = learning_rate
-        self.warmup = warmup
-        self.cache_datasets = cache_datasets
-        self.approx = approx
-        self.activation_quant_wait = activation_quant_wait
-        self.per_channel = per_channel
-        self.symmetric = symmetric
-        self.logs_dir_pattern = logs_dir_pattern
-        self.checkpoints_dir_pattern = checkpoints_dir_pattern
-        self._mask = None
+        super().__init__(base_model_path, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, cache_datasets,
+                         approx,
+                         activation_quant_wait, per_channel, symmetric, logs_dir_pattern, checkpoints_dir_pattern)
         self._queue = None
-
-        self.ensure_cache_folder()
-
-        # Current cache file
-        i = 0
-        while True:
-            self.cache_file = "cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_%d.json.gz" % (
-                "mobilenet", batch_size, qat_epochs, bn_freeze, learning_rate, warmup, activation_quant_wait, approx,
-                per_channel, symmetric,
-                i)
-            if not os.path.isfile(self.cache_file):
-                break
-            i += 1
-
-        print("Cache file: %s" % self.cache_file)
-        self.cache = []
-        self.load_cache()
-
-    @staticmethod
-    def ensure_cache_folder():
-        if not os.path.exists("cache"):
-            os.makedirs("cache")
-
-    def load_cache(self):
-        for fn in glob.glob("cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_*.json.gz" % (
-                "mobilenet", self.batch_size, self.qat_epochs, self.bn_freeze, self.learning_rate, self.warmup,
-                self.activation_quant_wait, self.approx,
-                self.per_channel, self.symmetric)):
-            if fn == self.cache_file:
-                continue
-            print("cache open", fn)
-
-            act = json.load(gzip.open(fn))
-
-            # find node in cache
-            for c in act:
-                conf = c["quant_conf"]
-
-                # try to search in cache
-                if not any(filter(lambda x: np.array_equal(x["quant_conf"], conf), self.cache)):
-                    self.cache.append(c)
-
-        tf.print("Cache loaded %d" % (len(self.cache)))
 
     @property
     def queue(self):
@@ -113,6 +69,14 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
         return self._queue
 
     def analyze(self, quant_configuration_set):
+        """
+        Analyze configurations on multiple GPUs
+
+        This analyzer uses all available GPU to make evaluation of configurations
+
+        :param quant_configuration_set: List of configurations for evaluation
+        :return: Analyzer list of configurations
+        """
         needs_eval = []
 
         for node_conf in quant_configuration_set:
@@ -166,54 +130,12 @@ class MultiGPUQATAnalyzer(NSGAAnalyzer):
 
             yield node
 
-    def __str__(self):
-        return "cache(%s,%d)" % (self.cache_file, len(self.cache))
-
-    def get_number_of_quantizable_layers(self):
-        return len(list(filter(lambda x: x != 0, self.mask)))
-
-    @property
-    def mask(self):
-        if self._mask is None:
-            self._mask = self._get_quantizable_layers_mask()
-        return self._mask
-
-    def _get_quantizable_layers_mask(self):
-        base_model = keras.models.load_model("mobilenet_tinyimagenet.keras")
-        transformer = PerLayerQuantizeModelTransformer(base_model, [], {}, approx=self.approx,
-                                                       per_channel=self.per_channel,
-                                                       symmetric=self.symmetric)
-
-        groups = transformer.get_quantizable_layers_groups()
-        mask = [-1 for _ in range(len(groups))]
-        count = 0
-        for i, group in enumerate(groups):
-            if calculate_model_size.calculate_weights_mobilenet_size(base_model, only_layers=group,
-                                                                     per_channel=self.per_channel,
-                                                                     symmetric=self.symmetric) > 0:
-                mask[i] = count
-                count = count + 1
-        return mask
-
-    def apply_mask(self, chromosome):
-        quant_config = chromosome.copy()
-        quant_config.append(8)
-        final_quant_config = [quant_config[i] for i in self.mask]
-        config = [
-            {
-                "weight_bits": final_quant_config[i],
-                "activation_bits": 8
-            } for i in range(len(self.mask))
-        ]
-        return config
-
-    def quantize_model_by_config(self, quant_config):
-        config = self.apply_mask(quant_config)
-        base_model = keras.models.load_model("mobilenet_tinyimagenet.keras")
-        return quantize_model(base_model, config, approx=self.approx, per_channel=self.per_channel,
-                              symmetric=self.symmetric)
-
     def get_eval_of_config(self, quant_config):
+        """
+        Get evaluation for configuration
+        :param quant_config:  to be evaluated
+        :return: a pair of top-1 accuracy and weights memory size
+        """
         device = self.queue.get()
         try:
             print(f"Quant config {quant_config} is going to be evaluated on {device.name}")

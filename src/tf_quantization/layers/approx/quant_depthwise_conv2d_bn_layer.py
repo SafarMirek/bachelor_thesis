@@ -44,66 +44,19 @@ class ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwise
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
         return (std_dev / gamma) * outputs
 
-    def call(self, inputs, training=None, **kwargs):
-        input_shape = inputs.shape
-
-        if training is None:
-            training = tf.keras.backend.learning_phase()
-
-        if not training:
-            moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
-            if not self.per_channel:
-                folded_weights = self._get_folded_weights(std_dev=moving_std_dev,
-                                                          depthwise_kernel=self.depthwise_kernel)
-                if self.weights_quantizer is not None:
-                    folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                                     weights=self._quantizer_weights)
-            else:
-                folded_weights = self.depthwise_kernel
-                # quantization of weights
-                if self.weights_quantizer is not None:
-                    folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-                    folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                                     weights=self._quantizer_weights)
-                    folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-
-                folded_weights = self._get_folded_weights(std_dev=moving_std_dev,
-                                                          depthwise_kernel=folded_weights)
-
-            outputs = backend.depthwise_conv2d(
-                inputs,
-                folded_weights,
-                strides=self.strides,
-                padding=self.padding,
-                dilation_rate=self.dilation_rate,
-                data_format=self.data_format,
-            )
-
-            if self.use_bias:
-                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
-            else:
-                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
-
-            return outputs
-
+    def _call__bn_frozen(self, inputs, training):
+        """
+        Execution graph for validation and training with frozen batch normalization
+        """
         moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
         if not self.per_channel:
             folded_weights = self._get_folded_weights(std_dev=moving_std_dev, depthwise_kernel=self.depthwise_kernel)
+            # quantization of weights
+            folded_weights = self._apply_quantizer_if_defined(folded_weights=folded_weights, training=training)
         else:
             folded_weights = self.depthwise_kernel
-
-        # quantization of weights
-        if self.weights_quantizer is not None:
-            if self.per_channel:
-                folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-            folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                             weights=self._quantizer_weights)
-            if self.per_channel:
-                folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-
-        if self.is_frozen() and self.per_channel:
-            # If bn is frozen we need to fold weights, since ranges for per-channel quantization are not
-            # scaled we need to scale weights after quantization and not before it
+            # quantization of weights
+            folded_weights = self._apply_quantizer_if_defined(folded_weights=folded_weights, training=training)
             folded_weights = self._get_folded_weights(std_dev=moving_std_dev, depthwise_kernel=folded_weights)
 
         outputs = backend.depthwise_conv2d(
@@ -115,12 +68,32 @@ class ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwise
             data_format=self.data_format,
         )
 
-        if self.is_frozen():
-            if self.use_bias:
-                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
-            else:
-                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
-            return outputs
+        outputs = self._add_folded_bias(outputs, self.bias if self.use_bias else [0], self.moving_mean,
+                                        moving_std_dev)
+
+        return outputs
+
+    def _call_with_bn(self, inputs, input_shape, training):
+        """
+        Execution graph for training with not fronzen batch normalozation
+        """
+        moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
+        if not self.per_channel:
+            folded_weights = self._get_folded_weights(std_dev=moving_std_dev, depthwise_kernel=self.depthwise_kernel)
+        else:
+            folded_weights = self.depthwise_kernel
+
+        # quantization of weights
+        folded_weights = self._apply_quantizer_if_defined(folded_weights=folded_weights, training=training)
+
+        outputs = backend.depthwise_conv2d(
+            inputs,
+            folded_weights,
+            strides=self.strides,
+            padding=self.padding,
+            dilation_rate=self.dilation_rate,
+            data_format=self.data_format,
+        )
 
         # * ( std_dev / gamma)
         if not self.per_channel:
@@ -188,3 +161,14 @@ class ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwise
         )
 
         return outputs
+
+    def _apply_quantizer_if_defined(self, *, training, folded_weights):
+        if self.per_channel:
+            folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
+
+        folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                         weights=self._quantizer_weights)
+        if self.per_channel:
+            folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
+
+        return folded_weights

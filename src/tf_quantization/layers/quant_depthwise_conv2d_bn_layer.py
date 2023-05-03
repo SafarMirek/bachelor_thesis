@@ -42,44 +42,34 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         if per_channel:
             raise ValueError("This scheme supports only per layer quantization")
 
-    def call(self, inputs, training=None, **kwargs):
-        input_shape = inputs.shape
+    def __call__bn_frozen(self, inputs, training):
+        """
+        Execution graph for validation and training with frozen batch normalization
+        """
+        moving_std_dev = tf.sqrt(self.moving_variance + self.epsilon)
+        folded_weights = self._get_folded_weights(std_dev=moving_std_dev, depthwise_kernel=self.depthwise_kernel)
 
-        if training is None:
-            training = tf.keras.backend.learning_phase()
+        # quantization of weights
+        folded_weights = self._apply_quantizer_if_defined(folded_weights=folded_weights, training=training)
 
-        if not training or self.is_frozen():
-            moving_std_dev = tf.sqrt(self.moving_variance + self.epsilon)
-            folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
+        outputs = backend.depthwise_conv2d(
+            inputs,
+            folded_weights,
+            strides=self.strides,
+            padding=self.padding,
+            dilation_rate=self.dilation_rate,
+            data_format=self.data_format,
+        )
 
-            # quantization of weights
-            if self.weights_quantizer is not None:
-                # For per-channel quantization it must be there, but this scheme makes sense only with per-layer
-                # channellast_folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-                folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                                 weights=self._quantizer_weights)
-                # folded_weights = tf.transpose(channellast_folded_weights, [0, 1, 3, 2])
+        outputs = self._add_folded_bias(outputs, self.bias if self.use_bias else [0], self.moving_mean,
+                                        moving_std_dev)
 
-            outputs = backend.depthwise_conv2d(
-                inputs,
-                folded_weights,
-                strides=self.strides,
-                padding=self.padding,
-                dilation_rate=self.dilation_rate,
-                data_format=self.data_format,
-            )
+        return outputs
 
-            if self.use_bias:
-                outputs = self._add_folded_bias(outputs, self.bias, self.moving_mean, moving_std_dev)
-            else:
-                outputs = self._add_folded_bias(outputs, [0], self.moving_mean, moving_std_dev)
-
-            # TODO: Activation and activation quantization
-            # if self.activation is not None:
-            #    return self.activation(outputs)
-
-            return outputs
-
+    def __call_with_bn(self, inputs, input_shape, training):
+        """
+        Execution graph for training with not fronzen batch normalozation
+        """
         conv_out = backend.depthwise_conv2d(
             inputs,
             self.depthwise_kernel,
@@ -102,12 +92,19 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         new_mean, new_variance = batch_mean, batch_variance
 
         def _do_update(var, value):
-            """Compute the updates for mean and variance."""
+            """
+            Compute the updates for mean and variance.
+            From: https://github.com/tensorflow/model-optimization
+            """
             return self._assign_moving_average(
                 var, value, self.momentum, input_shape[0]
             )
 
         def mean_update():
+            """
+            Update the moving mean
+            From: https://github.com/tensorflow/model-optimization
+            """
             true_branch = lambda: _do_update(self.moving_mean, new_mean)
             false_branch = lambda: self.moving_mean
             return control_flow_util.smart_cond(
@@ -115,7 +112,10 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
             )
 
         def variance_update():
-            """Update the moving variance."""
+            """
+            Update the moving variance.
+            From: https://github.com/tensorflow/model-optimization
+            """
             true_branch = lambda: _do_update(
                 self.moving_variance, new_variance
             )
@@ -128,18 +128,11 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         self.add_update(mean_update)
         self.add_update(variance_update)
 
-        # batch_mean = self.moving_mean
-        # batch_variance = self.moving_variance
-
         moving_std_dev = tf.sqrt(self.moving_variance + self.epsilon)
-        folded_weights = self._get_folded_weights(std_dev=moving_std_dev)
+        folded_weights = self._get_folded_weights(std_dev=moving_std_dev, depthwise_kernel=self.depthwise_kernel)
 
         # quantization of weights
-        if self.weights_quantizer is not None:
-            # channellast_folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
-            folded_weights = self.weights_quantizer.__call__(folded_weights, training,
-                                                             weights=self._quantizer_weights)
-            # folded_weights = tf.transpose(channellast_folded_weights, [0, 1, 3, 2])
+        folded_weights = self._apply_quantizer_if_defined(folded_weights=folded_weights, training=training)
 
         outputs = backend.depthwise_conv2d(
             inputs,
@@ -150,13 +143,26 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
             data_format=self.data_format,
         )
 
-        # Pro použití předchozího schéma stačí zakomentovat tyhle řádky a u get_folded_weights dát batch_variance
         batch_std_dev = tf.math.sqrt(batch_variance + self.epsilon)
         outputs = outputs * (moving_std_dev / batch_std_dev)
 
-        if self.use_bias:
-            outputs = self._add_folded_bias(outputs, self.bias, batch_mean, batch_std_dev)
-        else:
-            outputs = self._add_folded_bias(outputs, [0], batch_mean, batch_std_dev)
+        outputs = self._add_folded_bias(outputs, self.bias if self.use_bias else [0], batch_mean, batch_std_dev)
 
         return outputs
+
+    def call(self, inputs, training=None, **kwargs):
+        input_shape = inputs.shape
+
+        if training is None:
+            training = tf.keras.backend.learning_phase()
+
+        if not training or self.is_frozen():
+            return self.__call__bn_frozen(inputs, training)
+        else:
+            return self.__call_with_bn(inputs, input_shape, training)
+
+    def _apply_quantizer_if_defined(self, *, training, folded_weights):
+        if self.weights_quantizer is not None:
+            folded_weights = self.weights_quantizer.__call__(folded_weights, training,
+                                                             weights=self._quantizer_weights)
+        return folded_weights

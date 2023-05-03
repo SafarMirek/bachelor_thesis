@@ -9,6 +9,7 @@ import random
 
 import numpy as np
 import tensorflow as tf
+from tensorflow import keras
 
 import calculate_model_size
 import mobilenet_tinyimagenet_qat
@@ -19,15 +20,18 @@ from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModel
 
 
 class QATNSGA(NSGA):
+    """
+    NSGA-II for proposed system, it uses QAT Analyzer for evaluation of individuals
+    """
 
-    def __init__(self, logs_dir, base_model, parent_size=50, offspring_size=50, generations=25, batch_size=128,
+    def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
                  per_channel=True, symmetric=True, learning_rate=0.2):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
                          objectives=[("accuracy", True), ("memory", False)], previous_run=previous_run
                          )
-        self.base_model = base_model
+        self.base_model_path = base_model_path
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
         self.cache_datasets = cache_datasets
@@ -39,17 +43,23 @@ class QATNSGA(NSGA):
         self.quantizable_layers = self.get_analyzer().get_number_of_quantizable_layers()
 
     def get_maximal(self):
+        """Returns maximal values for objectives"""
+        base_model = keras.load_model
         return {
             "accuracy": 1.0,
-            "memory": calculate_model_size.calculate_weights_mobilenet_size(self.base_model,
+            "memory": calculate_model_size.calculate_weights_mobilenet_size(base_model,
                                                                             per_channel=self.per_channel,
                                                                             symmetric=self.symmetric)
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
+        """
+        Init NSGAAnalyzer
+        :return: new instance of NSGAAnalyzer
+        """
         logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
         checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
-        return QATAnalyzer(self.base_model, batch_size=self.batch_size, qat_epochs=self.qat_epochs,
+        return QATAnalyzer(base_model_path=self.base_model_path, batch_size=self.batch_size, qat_epochs=self.qat_epochs,
                            learning_rate=self.learning_rate,
                            cache_datasets=self.cache_datasets, approx=self.approx,
                            activation_quant_wait=self.activation_quant_wait, per_channel=self.per_channel,
@@ -57,14 +67,23 @@ class QATNSGA(NSGA):
                            checkpoints_dir_pattern=checkpoints_dir_pattern)
 
     def get_init_parents(self):
+        """
+        Initialize initial parents generation
+        :return: List of initial parents
+        """
         return [{"quant_conf": [i for _ in range(self.quantizable_layers)]} for i in range(2, 9)]
 
     def crossover(self, parents):
+        """
+        Create offspring from parents using uniform crossover and 10 % mutation chance
+        :param parents: List of parents
+        :return: created offspring
+        """
         child_conf = [8 for _ in range(self.quantizable_layers)]
         for li in range(self.quantizable_layers):
             if random.random() < 0.95:  # 95 % probability of crossover
                 child_conf[li] = random.choice(parents)["quant_conf"][li]
-            else:
+            else:  # 5 % change to use 8-bit quantization
                 child_conf[li] = 8
 
         if random.random() < 0.1:  # 10 % probability of mutation
@@ -75,10 +94,17 @@ class QATNSGA(NSGA):
 
 
 class QATAnalyzer(NSGAAnalyzer):
-    def __init__(self, base_model, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
+    """
+    Analyzer for QATNSGA
+
+    This analyzer analyzes individuals by running a few epochs using quantization-aware training
+    and tracking best achieved Top-1 accuracy
+    """
+
+    def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
                  logs_dir_pattern=None, checkpoints_dir_pattern=None):
-        self.base_model = base_model
+        self.base_model_path = base_model_path
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
         self.bn_freeze = bn_freeze
@@ -112,10 +138,16 @@ class QATAnalyzer(NSGAAnalyzer):
 
     @staticmethod
     def ensure_cache_folder():
+        """
+        Ensures cache folder exists
+        """
         if not os.path.exists("cache"):
             os.makedirs("cache")
 
     def load_cache(self):
+        """
+        Loads all already evaluated individuals from cache files to local cache
+        """
         for fn in glob.glob("cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_*.json.gz" % (
                 "mobilenet", self.batch_size, self.qat_epochs, self.bn_freeze, self.learning_rate, self.warmup,
                 self.activation_quant_wait, self.approx,
@@ -137,6 +169,11 @@ class QATAnalyzer(NSGAAnalyzer):
         tf.print("Cache loaded %d" % (len(self.cache)))
 
     def analyze(self, quant_configuration_set):
+        """
+        Analyze configurations
+        :param quant_configuration_set: List of configurations for evaluation
+        :return: Analyzer list of configurations
+        """
         for node_conf in quant_configuration_set:
             quant_conf = node_conf["quant_conf"]
 
@@ -198,9 +235,14 @@ class QATAnalyzer(NSGAAnalyzer):
             yield node
 
     def __str__(self):
-        return "cache(%s,%d)" % (self.cache_file, len(self.cache))
+        return "cache (file: %s, size: %d)" % (self.cache_file, len(self.cache))
 
     def apply_mask(self, chromosome):
+        """
+        Takes chromosome and maps it to configuration for all layers
+        :param chromosome: Chromosome
+        :return: List of quantization configuration for all layers
+        """
         quant_config = chromosome.copy()
         quant_config.append(8)
         final_quant_config = [quant_config[i] for i in self.mask]
@@ -214,10 +256,15 @@ class QATAnalyzer(NSGAAnalyzer):
 
     def quantize_model_by_config(self, quant_config):
         config = self.apply_mask(quant_config)
-        return quantize_model(self.base_model, config, approx=self.approx, per_channel=self.per_channel,
+        base_model = keras.models.load_model(self.base_model_path)
+        return quantize_model(base_model, config, approx=self.approx, per_channel=self.per_channel,
                               symmetric=self.symmetric)
 
     def get_number_of_quantizable_layers(self):
+        """
+        Get number of quantizable layers (layers which have some weights to quantize)
+        :return: Number of quantizable layers
+        """
         return len(list(filter(lambda x: x != -1, self.mask)))
 
     @property
@@ -227,14 +274,19 @@ class QATAnalyzer(NSGAAnalyzer):
         return self._mask
 
     def _get_quantizable_layers_mask(self):
-        transformer = PerLayerQuantizeModelTransformer(self.base_model, [], {}, approx=self.approx,
+        """
+        Create mask that maps chromosome to all layers configuration
+        :return: created mask
+        """
+        base_model = keras.models.load_model(self.base_model_path)
+        transformer = PerLayerQuantizeModelTransformer(base_model, [], {}, approx=self.approx,
                                                        per_channel=self.per_channel, symmetric=self.symmetric)
 
         groups = transformer.get_quantizable_layers_groups()
         mask = [-1 for _ in range(len(groups))]
         count = 0
         for i, group in enumerate(groups):
-            if calculate_model_size.calculate_weights_mobilenet_size(self.base_model, only_layers=group,
+            if calculate_model_size.calculate_weights_mobilenet_size(base_model, only_layers=group,
                                                                      per_channel=self.per_channel,
                                                                      symmetric=self.symmetric) > 0:
                 mask[i] = count

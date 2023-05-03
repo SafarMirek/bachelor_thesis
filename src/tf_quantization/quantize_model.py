@@ -16,17 +16,25 @@ from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModel
 
 
 class PerLayerNBitQuantizeScheme(quantize_scheme.QuantizeScheme):
-    """Scheme that allows usage of any layout transformer and registry"""
+    """Quantization scheme that supports mixed-precision model quantization"""
 
-    def __init__(self, transformer_fn, registry_fn):
-        self.transformer_fn = transformer_fn
-        self.registry_fn = registry_fn
+    def __init__(self, transformer: PerLayerQuantizeLayoutTransform, registry: PerLayerNBitQuantizeRegistry):
+        self.transformer = transformer
+        self.registry = registry
 
-    def get_layout_transformer(self):
-        return self.transformer_fn()
+    def get_layout_transformer(self) -> PerLayerQuantizeLayoutTransform:
+        """
+        Returns PerLayerQuantizeLayoutTransform
+        :return: PerLayerQuantizeLayoutTransform
+        """
+        return self.transformer
 
-    def get_quantize_registry(self):
-        return self.registry_fn()
+    def get_quantize_registry(self) -> PerLayerNBitQuantizeRegistry:
+        """
+        Initialized new QuantizeRegistry using provided lambda function
+        :return: QuantizeRegistry
+        """
+        return self.registry
 
 
 def quantize_model(model, quantization_config, activation_quant_no_affect=False, approx=False, per_channel=True,
@@ -52,6 +60,7 @@ def quantize_model(model, quantization_config, activation_quant_no_affect=False,
         transformer = PerLayerQuantizeModelTransformer(model, quantization_config, {}, approx=approx,
                                                        symmetric=symmetric, per_channel=per_channel)
 
+        # Validate quantization_config
         if transformer.get_number_of_quantizable_layers() != len(quantization_config):
             raise ValueError(
                 f'There is different number of quantizable layers in model than in quantization config. ' +
@@ -66,9 +75,9 @@ def quantize_model(model, quantization_config, activation_quant_no_affect=False,
         # Create PerLayerNBitQuantizeScheme that can be provided to quantize_apply
         # it makes quantize_apply use our per-layer model transformer and per layer quantize registry
         scheme = PerLayerNBitQuantizeScheme(
-            transformer_fn=lambda: PerLayerQuantizeLayoutTransform(quantization_config, approx=approx,
-                                                                   symmetric=symmetric, per_channel=per_channel),
-            registry_fn=lambda: PerLayerNBitQuantizeRegistry(
+            transformer=PerLayerQuantizeLayoutTransform(quantization_config, approx=approx,
+                                                        symmetric=symmetric, per_channel=per_channel),
+            registry=PerLayerNBitQuantizeRegistry(
                 layer_quantization_config_map,
                 activation_quant_no_affect=activation_quant_no_affect,
                 symmetric=symmetric,

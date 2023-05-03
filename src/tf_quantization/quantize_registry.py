@@ -240,7 +240,7 @@ class DisableableMovingAverageQuantizer(_QuantizeHelper, Quantizer):
 
     def __init__(self, num_bits, per_axis, symmetric, narrow_range, min_initializer, max_initializer, no_affect=False):
         """
-        Construct a MovingAverageQuantizer.
+        Construct a DisableableMovingAverageQuantizer.
 
         :param num_bits: Number of bits for quantization
         :param per_axis: Whether to apply per_axis quantization. The last dimension is used as the axis.
