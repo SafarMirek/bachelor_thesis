@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-#PBS -q qgpu_exp
-#PBS -N evalNSGAPerLayerAssymetricAccurate
-#PBS -l select=1:ngpus=1,walltime=00:05:00
+#PBS -q qgpu
+#PBS -N evalNSGAPerLayerAsymmetricAccurate
+#PBS -l select=1:ngpus=8,walltime=8:00:00
 #PBS -A OPEN-20-37
 
-RUN=mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch/run.00015.json.gz
+RUN=mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch/run.00016.json.gz
 
 echo "Script for evaluation of NSGA run"
 
@@ -49,7 +49,7 @@ python3 -m pip install tensorflow-model-optimization==0.7.3
 python3 -m pip install tensorflow-metadata==1.12.0
 python3 -m pip install protobuf==3.19.6
 python3 -m pip install tensorflow-datasets==4.8.2
-python3 -m pip install py-paretoarchive
+python3 -m pip install py-paretoarchive==0.19
 
-echo "Running Mobilenet QAT NSGA Evaluation of run with per-layer asymmetric weight quantization"
+echo "Running Mobilenet QAT NSGA Evaluation of run with per-layer asymmetric weight quantization and more accurate method for batch normalization folding"
 python3 nsga_evaluate.py --multigpu --run nsga_runs/${RUN} --learning-rate 0.0025 --batch-size 64 --epochs 50 --bn-freeze 40 --act-quant-wait 20 --logs-dir-pattern logs/mobilenet/mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch_24h_accurate/%s --checkpoints-dir-pattern checkpoints/mobilenet/mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch_24h_accurate/%s

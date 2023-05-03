@@ -22,7 +22,7 @@ echo "Create symlinks to logs and checkpoints"
 ln -s /mnt/proj2/open-20-37/safarmirek/logs logs
 ln -s /mnt/proj2/open-20-37/safarmirek/checkpoints checkpoints
 
-echo "Local files"
+echo "Local files:"
 ls -l
 
 echo "Install module TensorFlow/2.10.1-foss-2022a-CUDA-11.7.0"
@@ -45,7 +45,7 @@ python3 -m pip install tensorflow-model-optimization==0.7.3
 python3 -m pip install tensorflow-metadata==1.12.0
 python3 -m pip install protobuf==3.19.6
 python3 -m pip install tensorflow-datasets==4.8.2
-python3 -m pip install py-paretoarchive
+python3 -m pip install py-paretoarchive==0.19
 
-echo "Running mobilenet training"
+echo "Running MobileNet 0.25 training"
 python3 mobilenet_tinyimagenet_train.py --cache --save-as /mnt/proj2/open-20-37/safarmirek/mobilenet_tinyimagenet_0_25.keras --lr 0.025 --batch-size 64 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #PBS -q qgpu
-#PBS -N evalNSGAPerChannelSymetric
-#PBS -l select=1:ngpus=8,walltime=16:00:00
+#PBS -N evalNSGAPerChannelSymmetric
+#PBS -l select=1:ngpus=8,walltime=8:00:00
 #PBS -A OPEN-20-37
 
 RUN=mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch/run.00021.json.gz
@@ -46,9 +46,10 @@ echo "Installing required packages using pip"
 python3 -m pip install -U setuptools wheel pip packaging
 python3 -m pip install tensorflow==2.11.0
 python3 -m pip install tensorflow-model-optimization==0.7.3
-python3 -m pip install protobuf==3.19.6 tensorflow-datasets==4.8.2
-python3 -m pip install py-paretoarchive
+python3 -m pip install tensorflow-metadata==1.12.0
 python3 -m pip install protobuf==3.19.6
+python3 -m pip install tensorflow-datasets==4.8.2
+python3 -m pip install py-paretoarchive==0.19
 
-echo "Running Mobilenet QAT NSGA Evaluation of run with per-layer asymmetric weight quantization"
+echo "Running Mobilenet QAT NSGA Evaluation of run with per-channel symmetric weight quantization"
 python3 nsga_evaluate.py --multigpu --run nsga_runs/${RUN} --per-channel --symmetric --learning-rate 0.0025 --batch-size 64 --approx --epochs 50 --bn-freeze 40 --act-quant-wait 20 --logs-dir-pattern logs/mobilenet/mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch/%s --checkpoints-dir-pattern checkpoints/mobilenet/mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch/%s
