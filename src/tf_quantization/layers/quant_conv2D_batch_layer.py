@@ -38,7 +38,7 @@ class QuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormalization
         if per_channel:
             raise ValueError("This scheme supports only per layer quantization")
 
-    def _call__bn_frozen(self, inputs, input_shape, training):
+    def _call_bn_frozen(self, inputs, input_shape, training):
         """
         Execution graph for validation and training with frozen batch normalization
         """

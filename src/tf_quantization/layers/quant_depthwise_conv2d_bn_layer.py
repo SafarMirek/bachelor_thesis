@@ -47,7 +47,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         if per_channel:
             raise ValueError("This scheme supports only per layer quantization")
 
-    def _call__bn_frozen(self, inputs, training):
+    def _call_bn_frozen(self, inputs, training):
         """
         Execution graph for validation and training with frozen batch normalization
         """
@@ -154,17 +154,6 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         outputs = self._add_folded_bias(outputs, self.bias if self.use_bias else [0], batch_mean, batch_std_dev)
 
         return outputs
-
-    def call(self, inputs, training=None, **kwargs):
-        input_shape = inputs.shape
-
-        if training is None:
-            training = tf.keras.backend.learning_phase()
-
-        if not training or self.is_frozen():
-            return self.__call__bn_frozen(inputs, training)
-        else:
-            return self.__call_with_bn(inputs, input_shape, training)
 
     def _apply_quantizer_if_defined(self, *, training, folded_weights):
         """

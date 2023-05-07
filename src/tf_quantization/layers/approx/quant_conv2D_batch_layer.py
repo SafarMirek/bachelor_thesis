@@ -48,7 +48,7 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
         return (std_dev / gamma) * outputs
 
-    def _call__bn_frozen(self, inputs, input_shape, training):
+    def _call_bn_frozen(self, inputs, input_shape, training):
         """
         Execution graph for validation and training with frozen batch normalization
         """

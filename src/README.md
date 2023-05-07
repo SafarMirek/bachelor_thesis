@@ -6,7 +6,7 @@
 
 Packages:
 
-- `tf_quantize/` - contains source code for TensorFlow support of per-layer and mixed-precision quantization
+- `tf_quantization/` - contains source code for TensorFlow support of per-layer and mixed-precision quantization
 - `nsga/` - contains source code of NSGA-II implementation used in the proposed system
 - `visualize/` - contains common methods used in out visualization scripts
 - `datasets/` - contains generated package for tiny_imagenet100 creation and scripts for accessing tiny-imagenet and

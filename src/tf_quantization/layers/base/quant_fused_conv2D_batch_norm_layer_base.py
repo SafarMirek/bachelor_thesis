@@ -304,12 +304,12 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
             training = tf.keras.backend.learning_phase()
 
         if not training or self.is_frozen():
-            return self._call__bn_frozen(inputs, input_shape, training)
+            return self._call_bn_frozen(inputs, input_shape, training)
         else:
             return self._call_with_bn(inputs, input_shape, training)
 
     @abc.abstractmethod
-    def _call__bn_frozen(self, inputs, input_shape, training):
+    def _call_bn_frozen(self, inputs, input_shape, training):
         """
         Execution graph for validation and training with frozen batch normalization
         """

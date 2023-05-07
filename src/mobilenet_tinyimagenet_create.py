@@ -26,7 +26,7 @@ if __name__ == "__main__":
         epilog='')
 
     parser.add_argument("--weights-path", required=True)
-    parser.add_argument("--destination", default="mobilenet_tinyimagenet.keras", type=str)
+    parser.add_argument("--destination", default="mobilenet_tinyimagenet_025.keras", type=str)
     parser.add_argument("--alpha", default=0.25, type=float)
     parser.add_argument("--classes", default=100, type=int)
 

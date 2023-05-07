@@ -285,7 +285,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-v', '--verbose', default=False, action='store_true')  # on/off flag
     parser.add_argument('--cache', default=False, action='store_true')  # on/off flag
-    parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet.keras", type=str)
+    parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet_025.keras", type=str)
     parser.add_argument('--approx', default=False, action='store_true')
     parser.add_argument('--per-channel', default=False, action='store_true')
     parser.add_argument('--symmetric', default=False, action='store_true')

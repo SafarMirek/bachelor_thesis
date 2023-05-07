@@ -1,5 +1,6 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
 # Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+import argparse
 import os
 
 from matplotlib import pyplot as plt
@@ -73,4 +74,14 @@ def show_graph(layers_with_weights_number):
 
 
 if __name__ == "__main__":
-    main(base_model_path="mobilenet_tinyimagenet_025.keras")
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        '--base-model-path',
+        type=str,
+        default="mobilenet_tinyimagenet_025.keras",
+        help='')
+
+    args = parser.parse_args()
+
+    main(base_model_path=args.base_model_path)
