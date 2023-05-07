@@ -1,0 +1,190 @@
+{
+  "generations_config": [
+    {
+      "title": "Generace - Mobilenet 0.25 (Per-layer asymetrická kvantizace)",
+      "title_en": "Generations - Mobilenet 0.25 (Per-layer asymmetric quantization)",
+      "run_folder": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch",
+      "per_channel": false,
+      "symmetric": false,
+      "approx": true,
+      "act_quant": false,
+      "out": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch",
+      "base_memory": 1957472,
+      "float_accuracy": 0.516,
+      "generations": [
+        10,
+        16
+      ]
+    },
+    {
+      "title": "Generace - Mobilenet 0.25 (Per-channel symetrická kvantizace)",
+      "title_en": "Generations - Mobilenet 0.25 (Per-channel symmetric quantization)",
+      "run_folder": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch",
+      "per_channel": true,
+      "symmetric": true,
+      "approx": true,
+      "act_quant": false,
+      "out": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch",
+      "base_memory": 2047104,
+      "float_accuracy": 0.516,
+      "generations": [
+        5,
+        10
+      ]
+    },
+    {
+      "title": "Generace - Mobilenet 0.25 (Per-channel symetrická kvantizace) (48h)",
+      "title_en": "Generations - Mobilenet 0.25 (Per-channel symmetric quantization) (48h)",
+      "run_folder": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch_48h",
+      "per_channel": true,
+      "symmetric": true,
+      "approx": true,
+      "act_quant": false,
+      "out": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch_48h",
+      "base_memory": 2047104,
+      "float_accuracy": 0.516,
+      "generations": [
+        10,
+        15,
+        21
+      ]
+    }
+  ],
+  "final_graphs_configuration": [
+    {
+      "title": "Mobilenet 0.25 (Per-layer asymetrická kvantizace)",
+      "title_en": "Mobilenet 0.25 (Per-layer asymmetric quantization)",
+      "output_file": "final_results_per_layer_asymmetric_025",
+      "base_memory": 1957472,
+      "base_accuracy": 0.516,
+      "data": [
+        {
+          "source": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch",
+          "color": "tab:red",
+          "marker": "o",
+          "label": "Navržený systém",
+          "label_en": "Proposed system",
+          "line_style": ":"
+        },
+        {
+          "source": "mobilenet_025_same_per_layer_asymmetric",
+          "color": "black",
+          "marker": "x",
+          "label": "stejná bitová přenost",
+          "label_en": "uniform bit precision",
+          "line_style": ":"
+        }
+      ]
+    },
+    {
+      "title": "Mobilenet 0.25 (Per-layer asymetrická kvantizace)",
+      "title_en": "Mobilenet 0.25 (Per-layer asymmetric quantization)",
+      "output_file": "final_results_per_layer_asymmetric_025_accurate_eval",
+      "base_memory": 1957472,
+      "base_accuracy": 0.516,
+      "data": [
+        {
+          "source": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch_accurate_eval",
+          "color": "tab:cyan",
+          "marker": "s",
+          "label": "Navržený systém (accurate)",
+          "label_en": "Proposed system (accurate)",
+          "line_style": ":"
+        },
+        {
+          "source": "mobilenet_025_same_per_layer_asymmetric_accurate",
+          "color": "black",
+          "marker": "x",
+          "label": "stejná bitová přenost (accurate)",
+          "label_en": "uniform bit precision (accurate)",
+          "line_style": ":"
+        }
+      ]
+    },
+    {
+      "title": "Mobilenet 0.25 (Per-layer asymetrická kvantizace)",
+      "title_en": "Mobilenet 0.25 (Per-layer asymmetric quantization)",
+      "output_file": "final_results_per_layer_asymmetric_025_accurate_difference",
+      "base_memory": 1957472,
+      "base_accuracy": 0.516,
+      "data": [
+        {
+          "source": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch_accurate_eval",
+          "color": "tab:cyan",
+          "marker": "s",
+          "label": "Navržený systém (accurate)",
+          "label_en": "Proposed system (accurate)",
+          "line_style": ":",
+          "include_before": false
+        },
+        {
+          "source": "mobilenet_025_qat_12_no_act_approx_per_layer_asymmetric_24pch",
+          "color": "tab:red",
+          "marker": "o",
+          "label": "Navržený systém",
+          "label_en": "Proposed system",
+          "line_style": ":",
+          "include_before": false
+        }
+      ]
+    },
+    {
+      "title": "Mobilenet 0.25 (Per-channel symetrická kvantizace)",
+      "title_en": "MobileNet 0.25 (Per-channel symmetric quantization)",
+      "output_file": "final_results_per_channel_symmetric_025_24h",
+      "base_memory": 2047104,
+      "base_accuracy": 0.516,
+      "data": [
+        {
+          "source": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch",
+          "color": "tab:red",
+          "marker": "o",
+          "label": "Navržený systém",
+          "label_en": "Proposed system",
+          "line_style": ":"
+        },
+        {
+          "source": "mobilenet_025_same_per_channel_symmetric",
+          "color": "black",
+          "marker": "x",
+          "label": "stejná bitová přenost",
+          "label_en": "uniform bit precision",
+          "line_style": ":"
+        }
+      ]
+    },
+    {
+      "title": "Mobilenet 0.25 (Per-channel symetrická kvantizace)",
+      "title_en": "MobileNet 0.25 (Per-channel symmetric quantization)",
+      "output_file": "final_results_per_channel_symmetric_025",
+      "base_memory": 2047104,
+      "base_accuracy": 0.516,
+      "data": [
+        {
+          "source": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch",
+          "color": "tab:red",
+          "marker": "o",
+          "label": "Navržený systém (24h)",
+          "label_en": "Proposed system",
+          "line_style": ":"
+        },
+        {
+          "source": "mobilenet_025_qat_12_no_act_per_channel_symmetric_24pch_48h",
+          "color": "tab:cyan",
+          "marker": "o",
+          "label": "Navržený systém (48h)",
+          "label_en": "Proposed system (48h)",
+          "line_style": ":"
+        },
+        {
+          "source": "mobilenet_025_same_per_channel_symmetric",
+          "color": "black",
+          "marker": "x",
+          "label": "stejná bitová přenost",
+          "label_en": "uniform bit precision",
+          "line_style": ":"
+        }
+      ]
+    }
+  ]
+}

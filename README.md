@@ -1,6 +1,18 @@
 # Automated Quantization of Neural Networks
 
-###### Bachelor thesis - Miroslav Šafář (xsafar23)
+###### Bachelor thesis - Miroslav Šafář (xsafar23@stud.fit.vutbr.cz)
+
+## File structure
+
+- `src/` - source code of proposed system
+- `karolina/` - scripts used for running experiments on Karolina supercomputer
+- `nsga_runs/` - folder that contains system runs referred in the paper
+- `latex/` - source code of paper
+- `automated_quantization_of_neural_networks_paper.pdf` - bachelor thesis paper
+- `README.md` - README
+- `tiny_imagenet100.tar` - dataset used for experiments
+- `environment_linux_x86.yml` - conda environment file for Linux
+- `environment_macos_arm64.yml` - conda environment file for macOS with Apple Silicon
 
 ## Project Setup
 
@@ -30,6 +42,11 @@ $ pip install -r requirements_macos_arm64.txt
 ```
 
 **WARNING:** You can use this option only with Apple Silicon computer. With linux please use conda environment.
+
+### Tinyimagenet dataset
+
+For testing purposes we provide our tinyimagenet dataset. To use it you need to extract 
+`tiny_imagenet100.tar` into your TensorFlow Datamodels folder (default: `~/tensorflow_datasets`).
 
 ### Create pre-trained Mobilenet model
 
@@ -103,3 +120,12 @@ Another important parameters:
 - `--epochs` number of epochs for final fine-tuning
 - `--multigpu` run on multiple gpus
 - `--help` to print list of all script parameters
+
+## Visualization of results
+
+To view system results use:
+```shell
+python3 show_layer_configuration.py --run <nsga_run_log_dir> [--per-channel] [--symmetric]
+```
+This scripts allows you to choose between best found configurations and then show you bit-width for each layer.
+

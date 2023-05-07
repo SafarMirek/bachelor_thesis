@@ -10,6 +10,10 @@ from tf_quantization.layers.base.quant_fused_conv2D_batch_norm_layer_base import
 
 
 class QuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormalizationLayerBase):
+    """
+    This class implements method for solving problem with batch normalization folding during QAT
+    for Conv2D + Batch Normalization
+    """
 
     def __init__(self, filters, kernel_size, strides, padding, data_format, dilation_rate, groups, use_bias,
                  kernel_initializer, bias_initializer, kernel_regularizer, bias_regularizer, kernel_constraint,

@@ -10,6 +10,10 @@ from tensorflow_model_optimization.python.core.quantization.keras import quantiz
 
 
 class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.DepthwiseConv2D):
+    """
+    Base class for implementation of methods for solving problem with batch normalization folding during QAT
+    for DepthwiseConv2D + Batch Normalization
+    """
 
     def __init__(self, kernel_size, strides, padding, depth_multiplier, data_format, dilation_rate, activation,
                  use_bias, depthwise_initializer, bias_initializer, depthwise_regularizer, bias_regularizer,
@@ -29,7 +33,6 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
                          activity_regularizer=activity_regularizer, depthwise_constraint=depthwise_constraint,
                          bias_constraint=bias_constraint, **kwargs)
 
-        # TODO: I currently do not support more that 1 groups
         # BatchNormalization params
         self.axis = axis
         self.momentum = momentum
@@ -188,11 +191,31 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
         return dict(list(base_config.items()) + list(config.items()))
 
     def _get_folded_weights(self, std_dev, depthwise_kernel):
+        """
+        Folds batch normalization parameters into depthwise_kernel
+
+        depthwise_kernel_fold = ( gamma / std_dev) * depthwise_kernel
+
+        :param std_dev: Standard deviation
+        :param depthwise_kernel: Depthwise kernel
+        :return: Folded depthwise kernel
+        """
         gamma = tf.reshape(self.gamma, (1, 1, self.gamma.shape[0], 1))
         std_dev = tf.reshape(std_dev, (1, 1, std_dev.shape[0], 1))
         return (gamma / std_dev) * depthwise_kernel
 
     def _add_folded_bias(self, outputs, bias, mean, std_dev):
+        """
+        Folds batch normalization parameters into bias and adds it to output values
+
+        bias_fold = ( gamma / std_dev) * (bias - mean) + beta
+
+        :param outputs: Outputs
+        :param bias: Original bias
+        :param mean: Mean
+        :param std_dev: Standard deviation
+        :return: Outputs with added folded bias
+        """
         bias = (bias - mean) * (
                 self.gamma / std_dev) + self.beta
         return tf.nn.bias_add(
@@ -266,6 +289,10 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
         self.frozen_bn = True
 
     def is_frozen(self):
+        """
+        Returns if batch normalization parameters are frozen
+        :return: True if batch norm parameters are frozen
+        """
         return self.frozen_bn
 
     def call(self, inputs, training=None, **kwargs):
@@ -281,8 +308,14 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
 
     @abc.abstractmethod
     def _call__bn_frozen(self, inputs, training):
+        """
+        Execution graph for validation and training with frozen batch normalization
+        """
         pass
 
     @abc.abstractmethod
     def _call_with_bn(self, inputs, input_shape, training):
+        """
+        Execution graph for training with not fronzen batch normalozation
+        """
         pass

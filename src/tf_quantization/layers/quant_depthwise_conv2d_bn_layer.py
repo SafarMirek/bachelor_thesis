@@ -1,5 +1,6 @@
 # Project: Bachelor Thesis: Automated Quantization of Neural Networks
 # Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
+from abc import ABC
 
 import tensorflow as tf
 
@@ -11,6 +12,10 @@ from tf_quantization.layers.base.quant_fused_depthwise_conv2D_batch_norm_layer_b
 
 
 class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2DBatchNormalizationLayerBase):
+    """
+    This class implements method for solving problem with batch normalization folding during QAT
+    for DepthwiseConv2D + Batch Normalization
+    """
 
     def __init__(self, kernel_size, strides, padding, depth_multiplier, data_format, dilation_rate, activation,
                  use_bias, depthwise_initializer, bias_initializer, depthwise_regularizer, bias_regularizer,
@@ -42,7 +47,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         if per_channel:
             raise ValueError("This scheme supports only per layer quantization")
 
-    def __call__bn_frozen(self, inputs, training):
+    def _call__bn_frozen(self, inputs, training):
         """
         Execution graph for validation and training with frozen batch normalization
         """
@@ -66,7 +71,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
 
         return outputs
 
-    def __call_with_bn(self, inputs, input_shape, training):
+    def _call_with_bn(self, inputs, input_shape, training):
         """
         Execution graph for training with not fronzen batch normalozation
         """
@@ -162,6 +167,10 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
             return self.__call_with_bn(inputs, input_shape, training)
 
     def _apply_quantizer_if_defined(self, *, training, folded_weights):
+        """
+        Quantize weights if quantizer is defined
+        :return: Quantized weights
+        """
         if self.weights_quantizer is not None:
             folded_weights = self.weights_quantizer.__call__(folded_weights, training,
                                                              weights=self._quantizer_weights)

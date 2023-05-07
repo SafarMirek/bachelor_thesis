@@ -12,6 +12,40 @@ from tf_quantization.layers.quant_conv2D_batch_layer import QuantFusedConv2DBatc
 from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantFusedDepthwiseConv2DBatchNormalizationLayer
 
 
+def calculate_mobilenet_per_layer_number_of_weights(model):
+    """
+    This functions calculates number of weights in the original/quantized model
+    Supported layers are: Dense Layer, Conv2D Layer, DepthwiseConv2DLayer, QuantConv2DBatch Layers
+    and QuantDepthwiseConv2DBatchNormalization Layers
+    :param model: Model to be analyzed
+    :return: pairs of layers with number of weights in that layer
+    """
+    layers = []  # Layers with number of their weights
+    for layer in model.layers:
+        layer_size = 0
+        if (
+                isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedConv2DBatchNormalizationLayer)
+        ):
+            layer_size = np.prod(layer.kernel.shape)
+        elif (
+                isinstance(layer, QuantFusedDepthwiseConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer)
+        ):
+            layer_size = np.prod(layer.depthwise_kernel.shape)
+        elif isinstance(layer, keras.layers.Dense) or isinstance(layer, keras.layers.Conv2D):
+            layer_size = np.prod(layer.kernel.shape)
+        elif isinstance(layer, keras.layers.DepthwiseConv2D):
+            layer_size = np.prod(layer.depthwise_kernel.shape)
+        elif isinstance(layer, QuantizeWrapperV2):
+            if isinstance(layer.layer, keras.layers.Conv2D):
+                layer_size = np.prod(layer.layer.kernel.shape)
+            elif isinstance(layer.layer, keras.layers.Dense):
+                layer_size = np.prod(layer.layer.kernel.shape)
+        layers.append((layer.name, layer_size))
+    return layers
+
+
 def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, only_layers=None):
     """
     This functions calculates memory size of weights of the original/quantized model
@@ -28,7 +62,10 @@ def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, on
         if only_layers is not None and layer.name not in only_layers:
             continue
         layer_size = 0
-        if isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or isinstance(layer, ApproxQuantFusedConv2DBatchNormalizationLayer):
+        if (
+                isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedConv2DBatchNormalizationLayer)
+        ):
             num_bits_weight = layer.quantize_num_bits_weight
             layer_size = layer_size + num_bits_weight * np.prod(layer.kernel.shape)
 
@@ -42,7 +79,7 @@ def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, on
                 if not symmetric:
                     layer_size = layer_size + num_bits_weight
 
-            # add bias size (non quantized) it will be there every time because of batch norm fold
+            # add bias size (32-bit quantization) it will be there every time because of batch norm fold
             layer_size = layer_size + 32 * (layer.kernel.shape[3])
         elif (
                 isinstance(layer, QuantFusedDepthwiseConv2DBatchNormalizationLayer) or
@@ -62,7 +99,7 @@ def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, on
                 if not symmetric:
                     layer_size = layer_size + num_bits_weight
 
-            # add bias size (non quantized) it will be there every time because of batch norm fold
+            # add bias size (32 bit quantization) it will be there every time because of batch norm fold
             layer_size = layer_size + 32 * (layer.depthwise_kernel.shape[2])
         elif isinstance(layer, keras.layers.Dense) or isinstance(layer, keras.layers.Conv2D):
             layer_size = layer_size + 32 * np.prod(layer.kernel.shape)
@@ -95,7 +132,7 @@ def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, on
                         layer_size = layer_size + num_bits_weight
 
                 if layer.layer.use_bias:
-                    layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias is not quantized
+                    layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias quantized to 32-bit int
             elif isinstance(layer.layer, keras.layers.Dense):
                 # kernel
                 layer_size = layer_size + num_bits_weight * np.prod(layer.layer.kernel.shape)
@@ -105,6 +142,6 @@ def calculate_weights_mobilenet_size(model, per_channel=True, symmetric=True, on
                     layer_size = layer_size + num_bits_weight  # Zero-point
 
                 if layer.layer.use_bias:
-                    layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias is not quantized
+                    layer_size = layer_size + 32 * np.prod(layer.layer.bias.shape)  # Bias quantized to 32-bit int
         size = size + layer_size
     return size

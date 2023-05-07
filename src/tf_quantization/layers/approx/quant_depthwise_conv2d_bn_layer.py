@@ -11,6 +11,10 @@ from tf_quantization.layers.base.quant_fused_depthwise_conv2D_batch_norm_layer_b
 
 
 class ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2DBatchNormalizationLayerBase):
+    """
+    This class implements approximate method for solving problem with batch normalization folding during QAT
+    for DepthwiseConv2D + Batch Normalization
+    """
 
     def __init__(self, kernel_size, strides, padding, depth_multiplier, data_format, dilation_rate, activation,
                  use_bias, depthwise_initializer, bias_initializer, depthwise_regularizer, bias_regularizer,
@@ -163,6 +167,10 @@ class ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwise
         return outputs
 
     def _apply_quantizer_if_defined(self, *, training, folded_weights):
+        """
+        Quantize weights if quantizer is defined
+        :return: Quantized weights
+        """
         if self.per_channel:
             folded_weights = tf.transpose(folded_weights, [0, 1, 3, 2])
 

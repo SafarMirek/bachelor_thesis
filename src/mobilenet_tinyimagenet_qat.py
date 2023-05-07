@@ -9,7 +9,7 @@ from tensorflow import keras
 import tensorflow as tf
 from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapper
 
-from callbacks import MaxAccuracyCallback
+from callbacks_lib import MaxAccuracyCallback
 from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproxQuantFusedConv2DBatchNormalizationLayer
 from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
     ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer

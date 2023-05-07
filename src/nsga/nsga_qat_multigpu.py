@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import tensorflow as tf
 
-import calculate_model_size
+import calculate_model_size_lib as calculate_model_size
 import mobilenet_tinyimagenet_qat
 import nsga.nsga_qat
 from nsga.nsga import NSGAAnalyzer

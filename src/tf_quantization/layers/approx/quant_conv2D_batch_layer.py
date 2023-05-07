@@ -9,6 +9,10 @@ from tf_quantization.layers.base.quant_fused_conv2D_batch_norm_layer_base import
 
 
 class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormalizationLayerBase):
+    """
+    This class implements approximate method for solving problem with batch normalization folding during QAT
+    for Conv2D + Batch Normalization
+    """
 
     def __init__(self, filters, kernel_size, strides, padding, data_format, dilation_rate, groups, use_bias,
                  kernel_initializer, bias_initializer, kernel_regularizer, bias_regularizer, kernel_constraint,
@@ -31,6 +35,15 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
                          per_channel=per_channel, symmetric=symmetric, **kwargs)
 
     def _reset_folded_weights(self, std_dev, outputs):
+        """
+        Resets folded weights
+
+        outputs = ( std_dev / gamma) * outputs_folded
+
+        :param std_dev: Standard deviation
+        :param outputs: Outputs from conv with folded weights
+        :return: Reseted outputs
+        """
         gamma = tf.reshape(self.gamma, (1, 1, 1, self.gamma.shape[0]))
         std_dev = tf.reshape(std_dev, (1, 1, 1, std_dev.shape[0]))
         return (std_dev / gamma) * outputs
@@ -68,6 +81,8 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
         moving_std_dev = tf.math.sqrt(self.moving_variance + self.epsilon)
 
         if not self.per_channel:
+            # We do folding and resetting only for per-tensor quantization
+            # because it is not needed for per-channel quantization
             folded_weights = self._get_folded_weights(std_dev=moving_std_dev, kernel=self.kernel)
         else:
             folded_weights = self.kernel
@@ -76,8 +91,8 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
 
         outputs = self.convolution_op(inputs, folded_weights)
 
-        # * ( sqrt(var) / gamma)
         if not self.per_channel:
+            # * ( sqrt(var) / gamma)
             outputs = self._reset_folded_weights(moving_std_dev, outputs)
 
         if self.use_bias:

@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 
-import calculate_model_size
+import calculate_model_size_lib as calculate_model_size
 import mobilenet_tinyimagenet_qat
 from nsga.nsga import NSGA
 from nsga.nsga import NSGAAnalyzer

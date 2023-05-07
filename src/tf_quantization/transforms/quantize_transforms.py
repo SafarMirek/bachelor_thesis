@@ -185,10 +185,6 @@ class PerLayerQuantizeModelTransformer:
         if not self._match_layer(layer, pattern):
             return None
 
-        # if self._is_functional_model(
-        #        self.model) and not self._is_match_supported(layer, is_head_node):
-        #    return None
-
         if len(pattern.inputs) == 0:
             # Leaf layer in pattern.
             return [layer['config']['name']]
@@ -280,6 +276,7 @@ class PerLayerQuantizeModelTransformer:
                 per_channel=self._per_channel,
                 symmetric=self._symmetric
             )
+
             # layer_quantize_map gets modified by the transformations.
             transformed_model, layer_quantize_map = quantize_transform.apply(
                 transformed_model, layer_quantize_map)
@@ -287,10 +284,22 @@ class PerLayerQuantizeModelTransformer:
         return transformed_model, layer_quantize_map
 
     def get_number_of_quantizable_layers(self) -> int:
+        """
+        Returns number of quantizable layers (groups)
+        :return: Number of quantizable layers (groups)
+        """
         return len(self._layers_groups)
 
     def get_quantizable_layers_groups(self):
+        """
+        Return quantizable groups
+        :return: List of groups
+        """
         return self._layers_groups
 
     def get_layers_quantize_group_map(self):
+        """
+        Returns map that maps layers to their group
+        :return: Map
+        """
         return self._layers_group_index_map

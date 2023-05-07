@@ -32,11 +32,10 @@ def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_
     :param learning_rate: Starting learning rate of quantization aware training
     :param multigpu: Use multiple GPUs
     """
-    base_model = keras.models.load_model(base_model_path)
 
     if multigpu:
         print("Initializing QAT NSGA-II MultiGPU")
-        nsga = MultiGPUQATNSGA(logs_dir=logs_dir, base_model=base_model, parent_size=parent_size,
+        nsga = MultiGPUQATNSGA(logs_dir=logs_dir, base_model_path=base_model_path, parent_size=parent_size,
                                offspring_size=offspring_size,
                                batch_size=batch_size, qat_epochs=qat_epochs, generations=generations,
                                previous_run=previous_run,
@@ -44,7 +43,7 @@ def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_
                                per_channel=per_channel, symmetric=symmetric, learning_rate=learning_rate)
     else:
         print("Initializing QAT NSGA-II")
-        nsga = QATNSGA(logs_dir=logs_dir, base_model=base_model, parent_size=parent_size,
+        nsga = QATNSGA(logs_dir=logs_dir, base_model_path=base_model_path, parent_size=parent_size,
                        offspring_size=offspring_size,
                        batch_size=batch_size, qat_epochs=qat_epochs, generations=generations,
                        previous_run=previous_run,
@@ -72,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--base-model-path',
         type=str,
-        default="mobilenet_tinyimagenet.keras",
+        default="mobilenet_tinyimagenet_025.keras",
         help='')
 
     parser.add_argument(

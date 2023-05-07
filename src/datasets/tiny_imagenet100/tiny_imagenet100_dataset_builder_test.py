@@ -6,7 +6,6 @@ from . import tiny_imagenet100_dataset_builder
 
 class TinyImagenet100Test(tfds.testing.DatasetBuilderTestCase):
     """Tests for tiny_imagenet100 dataset."""
-    # TODO(tiny_imagenet100):
     DATASET_CLASS = tiny_imagenet100_dataset_builder.Builder
     SPLITS = {
         'train': 3,  # Number of fake train example
