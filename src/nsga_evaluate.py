@@ -46,10 +46,11 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                        activation_quant_wait=activation_quant_wait,
                                        approx=approx, per_channel=per_channel, symmetric=symmetric,
                                        logs_dir_pattern=logs_dir_pattern,
-                                       checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets)
+                                       checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
+                                       base_model_path=mobilenet_path)
     else:
-        base_model = keras.models.load_model(mobilenet_path)
-        analyzer = QATAnalyzer(base_model, batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
+        analyzer = QATAnalyzer(base_model_path=mobilenet_path, batch_size=batch_size, qat_epochs=qat_epochs,
+                               bn_freeze=bn_freeze,
                                learning_rate=learning_rate, warmup=warmup,
                                activation_quant_wait=activation_quant_wait,
                                approx=approx, per_channel=per_channel, symmetric=symmetric,

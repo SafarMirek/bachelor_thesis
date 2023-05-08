@@ -52,4 +52,4 @@ python3 -m pip install tensorflow-datasets==4.8.2
 python3 -m pip install py-paretoarchive==0.19
 
 echo "Running Mobilenet QAT NSGA Evaluation of run with per-layer asymmetric weight quantization and more accurate method for batch normalization folding"
-python3 nsga_evaluate.py --run nsga_runs/${RUN} --all --learning-rate 0.0025 --batch-size 64 --epochs 50 --bn-freeze 40 --act-quant-wait 20 --logs-dir-pattern logs/mobilenet/mobilenet_025_uniform_per_layer_assymetric_accurate/%s --checkpoints-dir-pattern checkpoints/mobilenet/mobilenet_025_uniform_per_layer_assymetric_accurate/%s
+python3 nsga_evaluate.py --multigpu --run nsga_runs/${RUN} --all --learning-rate 0.0025 --batch-size 64 --epochs 50 --bn-freeze 40 --act-quant-wait 20 --logs-dir-pattern logs/mobilenet/mobilenet_025_uniform_per_layer_assymetric_accurate/%s --checkpoints-dir-pattern checkpoints/mobilenet/mobilenet_025_uniform_per_layer_assymetric_accurate/%s
