@@ -196,7 +196,8 @@ def show_heatmap(base_model_path, per_channel, symmetric, data, run_name, base_a
     ax1.set_xlabel("Jméno vrstvy")
     ax1.set_ylabel("Konfigurace kvantizace")
 
-    data = data[-8:]  # Take only best 8
+    if len(data) > 8:
+        data = data[-8:]  # Take only best 8
 
     layers, confs_list = get_layers_data(base_model_path, per_channel=per_channel, symmetric=symmetric,
                                          masked_quant_config_list=[conf["quant_conf"] for conf in data])
@@ -259,7 +260,7 @@ def main(run, configuration, per_channel, symmetric, base_model_path, all, base_
                 'configuration',
                 message="Select configuration",
                 choices=[
-                    f'{i + 1}. Weights size: {(record["memory"] / 8000):.2f}kB Accuracy: {(record["accuracy_max"] * 100):.2f}%'
+                    f'{i}. Weights size: {(record["memory"] / 8000):.2f}kB Accuracy: {(record["accuracy_max"] * 100):.2f}%'
                     for i, record in enumerate(run_data, start=1)],
             ),
         ]
