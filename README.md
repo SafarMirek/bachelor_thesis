@@ -23,13 +23,18 @@ We provide conda environment file to setup conda environment.
 On Apple Silicon computers:
 
 ```shell
-$ conda create --file environment_macos_arm64.yml
+$ conda env create --file environment_macos_arm64.yml
 ```
 
 On Linux:
 
 ```shell
-$ conda create --file environment_linux_x86.yml
+$ conda env create --file environment_linux_x86.yml
+```
+
+Then you can activate created conda environment by using:
+```shell
+$ conda activate bachelor_thesis
 ```
 
 ### PIP
