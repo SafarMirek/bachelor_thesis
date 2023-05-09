@@ -99,7 +99,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         def _do_update(var, value):
             """
             Compute the updates for mean and variance.
-            From: https://github.com/tensorflow/model-optimization
+            From: https://github.com/keras-team/keras
             """
             return self._assign_moving_average(
                 var, value, self.momentum, input_shape[0]
@@ -108,7 +108,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         def mean_update():
             """
             Update the moving mean
-            From: https://github.com/tensorflow/model-optimization
+            From: https://github.com/keras-team/keras
             """
             true_branch = lambda: _do_update(self.moving_mean, new_mean)
             false_branch = lambda: self.moving_mean
@@ -119,7 +119,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayer(QuantFusedDepthwiseConv2D
         def variance_update():
             """
             Update the moving variance.
-            From: https://github.com/tensorflow/model-optimization
+            From: https://github.com/keras-team/keras
             """
             true_branch = lambda: _do_update(
                 self.moving_variance, new_variance

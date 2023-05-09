@@ -67,7 +67,7 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
     def build(self, input_shape):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
         super().build(input_shape)
         self.axis = tf_utils.validate_axis(self.axis, input_shape)
@@ -220,7 +220,7 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
     def _assign_moving_average(self, variable, value, momentum, inputs_size):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
 
         def calculate_update_delta():
@@ -247,7 +247,7 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
     def _assign_new_value(self, variable, value):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
         with backend.name_scope("AssignNewValue") as scope:
             if tf.compat.v1.executing_eagerly_outside_functions():
@@ -263,7 +263,7 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
     @property
     def _param_dtype(self):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
         # Raise parameters of fp16 batch norm to fp32
         if self.dtype == tf.float16 or self.dtype == tf.bfloat16:

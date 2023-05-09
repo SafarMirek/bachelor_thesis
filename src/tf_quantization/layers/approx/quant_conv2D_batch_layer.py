@@ -109,12 +109,19 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
         new_mean, new_variance = batch_mean, batch_variance
 
         def _do_update(var, value):
-            """Compute the updates for mean and variance."""
+            """
+            Compute the updates for mean and variance.
+            From: https://github.com/keras-team/keras
+            """
             return self._assign_moving_average(
                 var, value, self.momentum, input_shape[0]
             )
 
         def mean_update():
+            """
+            Update the moving mean
+            From: https://github.com/keras-team/keras
+            """
             true_branch = lambda: _do_update(self.moving_mean, new_mean)
             false_branch = lambda: self.moving_mean
             return control_flow_util.smart_cond(
@@ -122,7 +129,10 @@ class ApproxQuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormali
             )
 
         def variance_update():
-            """Update the moving variance."""
+            """
+            Update the moving variance.
+            From: https://github.com/keras-team/keras
+            """
             true_branch = lambda: _do_update(
                 self.moving_variance, new_variance
             )

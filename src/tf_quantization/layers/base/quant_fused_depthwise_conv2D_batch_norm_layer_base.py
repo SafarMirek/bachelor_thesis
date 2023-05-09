@@ -72,7 +72,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
 
     def build(self, input_shape):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
         super().build(input_shape)
 
@@ -224,7 +224,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
 
     def _assign_moving_average(self, variable, value, momentum, inputs_size):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
 
         def calculate_update_delta():
@@ -251,7 +251,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
 
     def _assign_new_value(self, variable, value):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
         with backend.name_scope("AssignNewValue") as scope:
             if tf.compat.v1.executing_eagerly_outside_functions():
@@ -261,9 +261,6 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
                     return tf.compat.v1.assign(variable, value, name=scope)
 
     def _build_quantizer_weights(self):
-        """
-        From: https://github.com/tensorflow/model-optimization
-        """
         if self.weights_quantizer is not None:
             channellast_kernel = tf.transpose(self.depthwise_kernel, [0, 1, 3, 2])
             self._quantizer_weights = self.weights_quantizer.build(channellast_kernel.shape, "weights", self)
@@ -271,7 +268,7 @@ class QuantFusedDepthwiseConv2DBatchNormalizationLayerBase(keras.layers.Depthwis
     @property
     def _param_dtype(self):
         """
-        From: https://github.com/tensorflow/model-optimization
+        From: https://github.com/keras-team/keras
         """
         # Raise parameters of fp16 batch norm to fp32
         if self.dtype == tf.float16 or self.dtype == tf.bfloat16:
