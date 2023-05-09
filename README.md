@@ -32,6 +32,8 @@ On Linux:
 $ conda env create --file environment_linux_x86.yml
 ```
 
+**WARNING:** Linux environment does not contains libraries for GPU acceleration.
+
 Then you can activate created conda environment by using:
 ```shell
 $ conda activate bachelor_thesis
@@ -104,19 +106,19 @@ Then evaluate the final results with full fine-tuning of the quantized models us
 For evaluation of per-layer asymmetric quantization using more accurate method for batch normalization folding use:
 
 ```shell
-python3 nsga_evaluate.py --run <nsga_run_log_dir>
+python3 nsga_evaluate.py --run <nsga_run_log_dir>/<run_file>
 ```
 
 For evaluation of per-layer asymmetric quantization using approximate method for batch normalization folding use:
 
 ```shell
-python3 nsga_evaluate.py --run <nsga_run_log_dir> --approx
+python3 nsga_evaluate.py --run <nsga_run_log_dir>/<run_file> --approx
 ```
 
 For evaluation of per-channel symmetric quantization use:
 
 ```shell
-python3 nsga_evaluate.py --run <nsga_run_log_dir> --per-channel --symmetric
+python3 nsga_evaluate.py --run <nsga_run_log_dir> --approx --per-channel --symmetric
 ```
 
 Other important parameters:

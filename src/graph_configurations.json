@@ -70,7 +70,7 @@
           "source": "mobilenet_025_same_per_layer_asymmetric",
           "color": "black",
           "marker": "x",
-          "label": "stejná bitová přenost",
+          "label": "stejná bitová přesnost",
           "label_en": "uniform bit precision",
           "line_style": ":"
         }
@@ -95,7 +95,7 @@
           "source": "mobilenet_025_same_per_layer_asymmetric_accurate",
           "color": "black",
           "marker": "x",
-          "label": "stejná bitová přenost (accurate)",
+          "label": "stejná bitová přesnost (accurate)",
           "label_en": "uniform bit precision (accurate)",
           "line_style": ":"
         }
@@ -147,7 +147,7 @@
           "source": "mobilenet_025_same_per_channel_symmetric",
           "color": "black",
           "marker": "x",
-          "label": "stejná bitová přenost",
+          "label": "stejná bitová přesnost",
           "label_en": "uniform bit precision",
           "line_style": ":"
         }
@@ -180,7 +180,7 @@
           "source": "mobilenet_025_same_per_channel_symmetric",
           "color": "black",
           "marker": "x",
-          "label": "stejná bitová přenost",
+          "label": "stejná bitová přesnost",
           "label_en": "uniform bit precision",
           "line_style": ":"
         }

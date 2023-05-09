@@ -165,6 +165,10 @@ def show_solo_graph(selected_quant_conf, per_channel, symmetric, base_model_path
     ax1.set_xticklabels(layers, rotation=80)
     fig.tight_layout()
 
+    # Ensure fig directory exists
+    if not os.path.exists("fig"):
+        os.makedirs("fig")
+
     fig.savefig(f"fig/conf_{'_'.join(str(e) for e in selected_quant_conf)}_{per_channel}_{symmetric}.pdf")
     fig.savefig(f"fig/conf_{'_'.join(str(e) for e in selected_quant_conf)}_{per_channel}_{symmetric}.png",
                 dpi=300)
