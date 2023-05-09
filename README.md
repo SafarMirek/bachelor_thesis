@@ -6,8 +6,8 @@
 
 - `src/` - source code of proposed system
 - `karolina/` - scripts used for running experiments on Karolina supercomputer
-- `nsga_runs/` - folder that contains system runs referred in the paper
-- `latex/` - source code of paper
+- `nsga_runs/` - folder that contains system runs referred to in the paper
+- `latex/` - source code of the paper
 - `automated_quantization_of_neural_networks_paper.pdf` - bachelor thesis paper
 - `README.md` - README
 - `tiny_imagenet100.tar` - dataset used for experiments
@@ -34,8 +34,8 @@ $ conda create --file environment_linux_x86.yml
 
 ### PIP
 
-There is another option to setup project environment using pip.
-We recommend using Python 3.10.9 and virtual environment. You can install all required packages using pip:
+There is another option to setup the project environment using pip.
+We recommend using Python 3.10.9 and a virtual environment. You can install all required packages using pip:
 
 ```shell
 $ pip install -r requirements_macos_arm64.txt
@@ -45,24 +45,24 @@ $ pip install -r requirements_macos_arm64.txt
 
 ### Tinyimagenet dataset
 
-For testing purposes we provide our tinyimagenet dataset. To use it you need to extract 
+For testing purposes, we provide our tiny-imagenet dataset. To use it you need to extract 
 `tiny_imagenet100.tar` into your TensorFlow Datamodels folder (default: `~/tensorflow_datasets`).
 
 ### Create pre-trained Mobilenet model
 
-Switch to source directory:
+Switch to the source directory:
 
 ```shell
 $ cd src
 ```
 
-To create and train mobilenet model on tiny-imagenet dataset use:
+To create and train MobileNet model on tiny-imagenet dataset use:
 
 ```shell
 $ python3 mobilenet_tinyimagenet_train.py --alpha 0.25 --save-as mobilenet_tinyimagenet_025.keras
 ```
 
-If you already have weights file for model, you can create it using:
+If you already have a weights file for a model, you can create it using:
 
 ```shell
 $ python3 mobilenet_tinyimagenet_create.py --alpha 0.25 --weights-path weights_025.hfd5 --destination mobilenet_tinyimagenet_025.keras
@@ -70,22 +70,22 @@ $ python3 mobilenet_tinyimagenet_create.py --alpha 0.25 --weights-path weights_0
 
 ## Run NSGA-II
 
-Switch to source directory:
+Switch to the source directory:
 
 ```shell
 $ cd src
 ```
 
-To run NSGA-II for per-layer assymetric quantization with approximate solution for batch normalization folding use:
+To run NSGA-II for per-layer asymmetric quantization with the approximate solution for batch normalization folding use:
 
 ```shell
 $ python3 run_nsga.py --generations 20 --parent-size 16 --offspring-size 16 --logs-dir <nsga_run_log_dir> --approx
 ```
 
-By default it uses pre-trained mobilenet model saved as `mobilenet_tinyimagenet_025.keras`,
+By default, it uses pre-trained MobileNet model saved as `mobilenet_tinyimagenet_025.keras`,
 to use different pre-trained model, specify parameter `--base-model-path`.
 
-Another important parameters:
+Other important parameters:
 
 - `--per-channel` use per-channel weight quantization for convolutional layers
 - `--symmetric` use symmetric quantization for weights
@@ -114,12 +114,12 @@ For evaluation of per-channel symmetric quantization use:
 python3 nsga_evaluate.py --run <nsga_run_log_dir> --per-channel --symmetric
 ```
 
-Another important parameters:
+Other important parameters:
 
 - `--batch-size` batch size for quantization-aware training
 - `--epochs` number of epochs for final fine-tuning
 - `--multigpu` run on multiple gpus
-- `--help` to print list of all script parameters
+- `--help` to print a list of all script parameters
 
 ## Visualization of results
 
@@ -127,5 +127,5 @@ To view system results use:
 ```shell
 python3 show_layer_configuration.py --run <nsga_run_log_dir> [--per-channel] [--symmetric]
 ```
-This scripts allows you to choose between best found configurations and then show you bit-width for each layer.
+This script allows you to choose between best-found configurations and then shows you the bit-width for each layer.
 

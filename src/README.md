@@ -8,14 +8,14 @@ Packages:
 
 - `tf_quantization/` - contains source code for TensorFlow support of per-layer and mixed-precision quantization
 - `nsga/` - contains source code of NSGA-II implementation used in the proposed system
-- `visualize/` - contains common methods used in out visualization scripts
+- `visualize/` - contains common methods used in our visualization scripts
 - `datasets/` - contains generated package for tiny_imagenet100 creation and scripts for accessing tiny-imagenet and
   cifar-10 datasets
 
 Important scripts:
 
 - `mobilenet_tinyimagenet_create.py` - creates keras model of Mobilenet in H5 format from weights file
-- `mobilenet_tinyimagenet_qat.py` - this scripts and also library used in out QAT NSGA-II implementation runs
+- `mobilenet_tinyimagenet_qat.py` - script and library used in our QAT NSGA-II implementation that runs
   quantization-aware training for given model and tiny-imagenet dataset
 - `mobilenet_tinyimagenet_train.py` - trains floating-point model of mobilenet with tiny-imagenet dataset
 
