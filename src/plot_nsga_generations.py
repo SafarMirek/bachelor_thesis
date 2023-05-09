@@ -53,7 +53,7 @@ def main(*, noshow, all, approx, per_channel, symmetric, configurations, act_qua
         ref_accuracy = configuration["float_accuracy"]
         alldata = {}
 
-        for fn in sorted(glob.glob("nsga_runs/%s/run.*.json.gz" % runs_folder)):
+        for fn in sorted(glob.glob("../nsga_runs/%s/run.*.json.gz" % runs_folder)):
             gen = int(re.match(r".*run\.(\d+)\.json\.gz", fn).group(1))
             alldata[gen] = json.load(gzip.open(fn))
             for record in alldata[gen]["parent"] + alldata[gen]["offspring"]:
