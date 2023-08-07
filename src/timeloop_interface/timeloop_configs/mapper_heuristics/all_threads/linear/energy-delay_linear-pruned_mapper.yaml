@@ -1,0 +1,8 @@
+mapper:
+  optimization-metrics: [ energy, delay ]
+  log-oaves: True
+  live-status: False
+  timeout: 15000
+  victory-condition: 500
+  algorithm: linear-pruned
+  max-permutations-per-if-visit: 16
