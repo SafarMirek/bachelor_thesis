@@ -15,6 +15,17 @@ from nsga.nsga import NSGAAnalyzer
 
 from queue import Queue
 
+from mapper_facade import MapperFacade
+
+from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapperV2
+
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproxQuantFusedConv2DBatchNormalizationLayer
+from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
+    ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_conv2D_batch_layer import QuantFusedConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantFusedDepthwiseConv2DBatchNormalizationLayer
+import keras.layers
+
 
 class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
     """
@@ -170,6 +181,50 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                                                                                per_channel=self.per_channel,
                                                                                symmetric=self.symmetric)
 
+                mapper_facade = MapperFacade()
+                hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1, bitwidths=get_config_from_model(quantized_model), input_size="224,224,3", threads="all", heuristic="random", metrics=("energy", "delay"))
+
                 return accuracy, memory
         finally:
             self.queue.put(device)
+
+def get_config_from_model(quantized_model):
+    layers = []  # Layers with number of their weights
+    for layer in quantized_model.layers:
+        layer_size = 0
+        if (
+                isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedConv2DBatchNormalizationLayer)
+        ):
+            layers.append({
+                "Inputs": 8,
+                "Weights": layer.quantize_num_bits_weight,
+                "Outputs": 8
+            })
+        elif (
+                isinstance(layer, QuantFusedDepthwiseConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer)
+        ):
+            layers.append({
+                "Inputs": 8,
+                "Weights": layer.quantize_num_bits_weight,
+                "Outputs": 8
+            })
+        elif isinstance(layer, QuantizeWrapperV2):
+            num_bits_weight = 8
+            if "num_bits_weight" in layer.quantize_config.get_config():
+                num_bits_weight = layer.quantize_config.get_config()["num_bits_weight"]
+            if isinstance(layer.layer, keras.layers.Conv2D):
+                layers.append({
+                "Inputs": 8,
+                "Weights": num_bits_weight,
+                "Outputs": 8
+                })
+            elif isinstance(layer.layer, keras.layers.DepthwiseConv2D):
+                layers.append({
+                "Inputs": 8,
+                "Weights": num_bits_weight,
+                "Outputs": 8
+                })
+    return layers
+
