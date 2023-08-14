@@ -2,6 +2,7 @@ mapper:
   optimization-metrics: [ delay, energy ]
   log-oaves: True
   live-status: False
+  num-threads: 1
   timeout: 15000
   victory-condition: 500
   algorithm: random-pruned
