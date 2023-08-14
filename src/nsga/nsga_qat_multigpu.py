@@ -5,6 +5,8 @@ import gzip
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from functools import reduce
+from multiprocessing import Process
 
 import tensorflow as tf
 
@@ -109,7 +111,8 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = {
                 "quant_conf": quant_conf,
                 "accuracy": float(results[i][0]),
-                "memory": int(results[i][1])
+                "total_cycles": int(results[i][1]["total_cycles"]),
+                "total_energy": float(results[i][1]["total_energy"]),
             }
             self.cache.append(node)
             json.dump(self.cache, gzip.open(self.cache_file, "wt", encoding="utf8"))
@@ -128,8 +131,9 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             # Get the accuracy
             if len(cache_sel) >= 1:  # Found in cache
                 accuracy = cache_sel[0]["accuracy"]
-                memory = cache_sel[0]["memory"]
-                tf.print("Cache : %s;accuracy=%s;memory=%s;" % (str(quant_conf), accuracy, memory))
+                total_energy = cache_sel[0]["total_energy"]
+                total_cycles = cache_sel[0]["total_cycles"]
+                tf.print("Cache : %s;accuracy=%s;energy=%s,cycles=%s;" % (str(quant_conf), accuracy, total_energy, total_cycles))
             else:  # Not found in cache
                 raise ValueError("All configurations should be in cache, how has this happends?")
 
@@ -137,22 +141,26 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = node_conf.copy()
             node["quant_conf"] = quant_conf
             node["accuracy"] = float(accuracy)
-            node["memory"] = int(memory)
+            node["total_energy"] = float(total_energy)
+            node["total_cycles"] = int(total_cycles)
 
             yield node
 
-    def get_eval_of_config(self, quant_config):
-        """
-        Get evaluation for configuration
-        :param quant_config:  to be evaluated
-        :return: a pair of top-1 accuracy and weights memory size
-        """
-        device = self.queue.get()
-        try:
-            print(f"Quant config {quant_config} is going to be evaluated on {device.name}")
-            with tf.device(device.name):
-                quantized_model = self.quantize_model_by_config(quant_config)
+    def eval_param(self, eval_param, quantized_model, quant_config, device_name):
+        if eval_param == "hardware_params":
+            mapper_facade = MapperFacade()
+            hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
+                                                                      bitwidths=nsga.get_config_from_model(quantized_model),
+                                                                      input_size="224,224,3", threads="one",
+                                                                      heuristic="random",
+                                                                      metrics=("energy", "delay"))
+            total_energy = sum(map(lambda x: x["Energy [uJ]"], hardware_params.values()))
+            total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
 
+            return {"total_energy": total_energy, "total_cycles": total_cycles}
+
+        elif eval_param == "accuracy":
+            with tf.device(device_name):
                 checkpoints_dir = None
                 if self.checkpoints_dir_pattern is not None:
                     checkpoints_dir = self.checkpoints_dir_pattern % '_'.join(map(lambda x: str(x), quant_config))
@@ -176,55 +184,25 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                                                            activation_quant_wait=self.activation_quant_wait,
                                                            save_best_only=True
                                                            )
-                # calculate size
-                memory = calculate_model_size.calculate_weights_mobilenet_size(quantized_model,
-                                                                               per_channel=self.per_channel,
-                                                                               symmetric=self.symmetric)
+                return accuracy
 
-                mapper_facade = MapperFacade()
-                hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1, bitwidths=get_config_from_model(quantized_model), input_size="224,224,3", threads="all", heuristic="random", metrics=("energy", "delay"))
+    def get_eval_of_config(self, quant_config):
+        """
+        Get evaluation for configuration
+        :param quant_config:  to be evaluated
+        :return: a pair of top-1 accuracy and weights memory size
+        """
+        device = self.queue.get()
+        try:
+            print(f"Quant config {quant_config} is going to be evaluated on {device.name}")
+            with tf.device(device.name):
+                quantized_model = self.quantize_model_by_config(quant_config)
 
-                return accuracy, memory
+                pool = ThreadPoolExecutor(max_workers=2)
+                (accuracy, hardware_params) = pool.map(
+                    lambda x: self.eval_param(x, quantized_model, quant_config, device.name),
+                    ["accuracy", "hardware_params"])
+
+                return accuracy, hardware_params
         finally:
             self.queue.put(device)
-
-def get_config_from_model(quantized_model):
-    layers = []  # Layers with number of their weights
-    for layer in quantized_model.layers:
-        layer_size = 0
-        if (
-                isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or
-                isinstance(layer, ApproxQuantFusedConv2DBatchNormalizationLayer)
-        ):
-            layers.append({
-                "Inputs": 8,
-                "Weights": layer.quantize_num_bits_weight,
-                "Outputs": 8
-            })
-        elif (
-                isinstance(layer, QuantFusedDepthwiseConv2DBatchNormalizationLayer) or
-                isinstance(layer, ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer)
-        ):
-            layers.append({
-                "Inputs": 8,
-                "Weights": layer.quantize_num_bits_weight,
-                "Outputs": 8
-            })
-        elif isinstance(layer, QuantizeWrapperV2):
-            num_bits_weight = 8
-            if "num_bits_weight" in layer.quantize_config.get_config():
-                num_bits_weight = layer.quantize_config.get_config()["num_bits_weight"]
-            if isinstance(layer.layer, keras.layers.Conv2D):
-                layers.append({
-                "Inputs": 8,
-                "Weights": num_bits_weight,
-                "Outputs": 8
-                })
-            elif isinstance(layer.layer, keras.layers.DepthwiseConv2D):
-                layers.append({
-                "Inputs": 8,
-                "Weights": num_bits_weight,
-                "Outputs": 8
-                })
-    return layers
-

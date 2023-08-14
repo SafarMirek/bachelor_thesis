@@ -60,9 +60,12 @@ class MapperFacade:
 
         # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
         if verbose:
+            print("Running: ")
+            print(self.mode + " " + self.arch + " " + self.components + " " + self.constraints + " " + mapper + " " + workload + " -o tmp_outputs")
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
                            + [mapper, workload, "-o", "tmp_outputs"], check=True)
         else:
+            print(self.mode + " " + self.arch + " " + self.components + " " + self.constraints + " " + mapper + " " + workload + " -o tmp_outputs")
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
                            + [mapper, workload, "-o", "tmp_outputs"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
@@ -241,5 +244,5 @@ if __name__ == "__main__":
 
     # Example usage run creating and evaluating workloads for parsed mobilenet keras model with non-uniform quantization for each layer (bitwidths=dict)
     json_dict = json_file_to_dict("construct_workloads/temps/bitwidths_mobilenet_sample.json")
-    results = facade.get_hw_params_parse_model(model="mobilenet_tinyimagenet_025.keras", batch_size=1, bitwidths=json_dict, input_size="224,224,3", threads="all", heuristic="random", metrics=("energy", "delay"))
+    results = facade.get_hw_params_parse_model(model="mobilenet_tinyimagenet_025.keras", batch_size=1, bitwidths=json_dict, input_size="224,224,3", threads="all", heuristic="random", metrics=("energy", "delay"), verbose=True)
     dict_to_json(results, "results_non_uniform.json")

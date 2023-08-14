@@ -7,14 +7,23 @@ import json
 import os
 import random
 
+from collections import OrderedDict
+
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
+from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapperV2
 
 import calculate_model_size_lib as calculate_model_size
 import mobilenet_tinyimagenet_qat
+from mapper_facade import MapperFacade
 from nsga.nsga import NSGA
 from nsga.nsga import NSGAAnalyzer
+from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproxQuantFusedConv2DBatchNormalizationLayer
+from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
+    ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_conv2D_batch_layer import QuantFusedConv2DBatchNormalizationLayer
+from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantFusedDepthwiseConv2DBatchNormalizationLayer
 from tf_quantization.quantize_model import quantize_model
 from tf_quantization.transforms.quantize_transforms import PerLayerQuantizeModelTransformer
 
@@ -29,7 +38,8 @@ class QATNSGA(NSGA):
                  per_channel=True, symmetric=True, learning_rate=0.2):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
-                         objectives=[("accuracy", True), ("memory", False)], previous_run=previous_run
+                         objectives=[("accuracy", True), ("total_energy", False), ("total_cycles", False)],
+                         previous_run=previous_run
                          )
         self.base_model_path = base_model_path
         self.batch_size = batch_size
@@ -44,12 +54,16 @@ class QATNSGA(NSGA):
 
     def get_maximal(self):
         """Returns maximal values for objectives"""
-        base_model = keras.load_model
+        print("Getting maximal values of metrics...")
+
+        results = self.get_analyzer().analyze([{"quant_config": [8 for _ in range(self.quantizable_layers)]}])
+        accuracy = results[0]
+        hardware_params = results[1]
+
         return {
-            "accuracy": 1.0,
-            "memory": calculate_model_size.calculate_weights_mobilenet_size(base_model,
-                                                                            per_channel=self.per_channel,
-                                                                            symmetric=self.symmetric)
+            "accuracy": accuracy,
+            "total_energy": float(hardware_params["total_energy"]),
+            "total_cycles": int(hardware_params["total_cycles"])
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
@@ -91,6 +105,9 @@ class QATNSGA(NSGA):
             child_conf[li] = random.choice([2, 3, 4, 5, 6, 7, 8])
 
         return {"quant_conf": child_conf}
+
+    def get_config_from_model(self, base_model):
+        pass
 
 
 class QATAnalyzer(NSGAAnalyzer):
@@ -188,8 +205,10 @@ class QATAnalyzer(NSGAAnalyzer):
             # Get the accuracy
             if len(cache_sel) >= 1:  # Found in cache
                 accuracy = cache_sel[0]["accuracy"]
-                memory = cache_sel[0]["memory"]
-                tf.print("Cache : %s;accuracy=%s;memory=%s;" % (str(quant_conf), accuracy, memory))
+                total_energy = cache_sel[0]["total_energy"]
+                total_cycles = cache_sel[0]["total_cycles"]
+                tf.print("Cache : %s;accuracy=%s;energy=%s,cycles=%s;" % (
+                    str(quant_conf), accuracy, total_energy, total_cycles))
             else:  # Not found in cache
                 quantized_model = self.quantize_model_by_config(quant_conf)
 
@@ -218,15 +237,22 @@ class QATAnalyzer(NSGAAnalyzer):
                                                            )
 
                 # calculate size
-                memory = calculate_model_size.calculate_weights_mobilenet_size(quantized_model,
-                                                                               per_channel=self.per_channel,
-                                                                               symmetric=self.symmetric)
+                mapper_facade = MapperFacade()
+                hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
+                                                                          bitwidths=get_config_from_model(
+                                                                              quantized_model),
+                                                                          input_size="224,224,3", threads="one",
+                                                                          heuristic="random",
+                                                                          metrics=("energy", "delay"))
+                total_energy = sum(map(lambda x: x["Energy [uJ]"], hardware_params.values()))
+                total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
 
             # Create output node
             node = node_conf.copy()
             node["quant_conf"] = quant_conf
             node["accuracy"] = float(accuracy)
-            node["memory"] = int(memory)
+            node["total_energy"] = float(total_energy)
+            node["total_cycles"] = int(total_cycles)
 
             if len(cache_sel) == 0:  # If the data are not from the cache, cache it
                 self.cache.append(node)
@@ -292,3 +318,55 @@ class QATAnalyzer(NSGAAnalyzer):
                 mask[i] = count
                 count = count + 1
         return mask
+
+
+def get_config_from_model(quantized_model):
+    layers = OrderedDict()  # Layers with number of their weights
+    for layer in quantized_model.layers:
+        if (
+                isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedConv2DBatchNormalizationLayer)
+        ):
+            layers[layer.name] = {
+                "Inputs": 8,
+                "Weights": layer.quantize_num_bits_weight,
+                "Outputs": 8
+            }
+        elif (
+                isinstance(layer, QuantFusedDepthwiseConv2DBatchNormalizationLayer) or
+                isinstance(layer, ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer)
+        ):
+            layers[layer.name] = {
+                "Inputs": 8,
+                "Weights": layer.quantize_num_bits_weight,
+                "Outputs": 8
+            }
+        elif isinstance(layer, QuantizeWrapperV2):
+            num_bits_weight = 8
+            if "num_bits_weight" in layer.quantize_config.get_config():
+                num_bits_weight = layer.quantize_config.get_config()["num_bits_weight"]
+            if isinstance(layer.layer, keras.layers.Conv2D):
+                layers[layer.layer.name] = {
+                    "Inputs": 8,
+                    "Weights": num_bits_weight,
+                    "Outputs": 8
+                }
+            elif isinstance(layer.layer, keras.layers.DepthwiseConv2D):
+                layers[layer.layer.name] = {
+                    "Inputs": 8,
+                    "Weights": num_bits_weight,
+                    "Outputs": 8
+                }
+        elif isinstance(layer, keras.layers.Conv2D):
+            layers[layer.name] = {
+                "Inputs": 8,
+                "Weights": 8,
+                "Outputs": 8
+            }
+        elif isinstance(layer.layer, keras.layers.DepthwiseConv2D):
+            layers[layer.name] = {
+                "Inputs": 8,
+                "Weights": 8,
+                "Outputs": 8
+            }
+    return layers
