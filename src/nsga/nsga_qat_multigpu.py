@@ -150,7 +150,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
         if eval_param == "hardware_params":
             mapper_facade = MapperFacade()
             hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
-                                                                      bitwidths=nsga.get_config_from_model(quantized_model),
+                                                                      bitwidths=nsga.nsga_qat.get_config_from_model(quantized_model),
                                                                       input_size="224,224,3", threads="one",
                                                                       heuristic="random",
                                                                       metrics=("energy", "delay"))

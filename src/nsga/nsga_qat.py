@@ -106,9 +106,6 @@ class QATNSGA(NSGA):
 
         return {"quant_conf": child_conf}
 
-    def get_config_from_model(self, base_model):
-        pass
-
 
 class QATAnalyzer(NSGAAnalyzer):
     """
