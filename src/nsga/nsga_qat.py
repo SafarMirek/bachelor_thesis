@@ -360,7 +360,7 @@ def get_config_from_model(quantized_model):
                 "Weights": 8,
                 "Outputs": 8
             }
-        elif isinstance(layer.layer, keras.layers.DepthwiseConv2D):
+        elif isinstance(layer, keras.layers.DepthwiseConv2D):
             layers[layer.name] = {
                 "Inputs": 8,
                 "Weights": 8,
