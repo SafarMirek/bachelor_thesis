@@ -8,8 +8,8 @@ import json
 import csv
 import shutil
 from typing import Tuple
-from construct_workloads.create_model import create_keras_model, create_pytorch_model
-from construct_workloads.parse_model import parse_keras_model, parse_pytorch_model
+from construct_workloads.create_model import create_keras_model
+from construct_workloads.parse_model import parse_keras_model
 from construct_workloads.construct_workloads import json_file_to_dict, construct_workloads
 
 
@@ -149,7 +149,8 @@ class MapperFacade:
         if api_choice == "keras":
             create_keras_model(api_name=api_choice, model_name=model, input_size=input_size, batch_size=batch_size, out_dir="construct_workloads/parsed_models", out_file=model.split("/")[-1].split(".")[0], verbose=verbose)
         elif api_choice == "pytorch":
-            create_pytorch_model(api_name=api_choice, model_name=model, input_size=input_size, batch_size=batch_size, out_dir="construct_workloads/parsed_models", out_file=model.split("/")[-1].split(".")[0], verbose=verbose)
+            pass
+            #create_pytorch_model(api_name=api_choice, model_name=model, input_size=input_size, batch_size=batch_size, out_dir="construct_workloads/parsed_models", out_file=model.split("/")[-1].split(".")[0], verbose=verbose)
         else:
             raise ValueError("Invalid API choice. Choose between `keras` or `pytorch`.")
 
@@ -209,8 +210,8 @@ class MapperFacade:
         # Create templates for individual model's CONV layers
         if api_choice == "keras":
             parse_keras_model(api_name=api_choice, model_file=model, input_size=input_size, batch_size=batch_size, out_dir="construct_workloads/parsed_models", out_file=model.split("/")[-1].split(".")[0], verbose=verbose)
-        else:
-            parse_pytorch_model(api_name=api_choice, model_file=model, input_size=input_size, batch_size=batch_size, out_dir="construct_workloads/parsed_models", out_file=model.split("/")[-1].split(".")[0], verbose=verbose)
+        #else:
+            #parse_pytorch_model(api_name=api_choice, model_file=model, input_size=input_size, batch_size=batch_size, out_dir="construct_workloads/parsed_models", out_file=model.split("/")[-1].split(".")[0], verbose=verbose)
 
         # Construct timeloop workloads from the created templates and add to them the bitwidth settings
         yaml_model = f"construct_workloads/parsed_models/{model.split('/')[-1].split('.')[0]}.yaml"

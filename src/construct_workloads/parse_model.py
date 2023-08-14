@@ -3,8 +3,6 @@
 import os
 import argparse
 from argparse import RawTextHelpFormatter
-import torch
-import torchvision.models as models
 import tensorflow as tf
 import tensorflow.keras.applications as keras_models
 from keras.models import load_model
@@ -18,38 +16,6 @@ def get_output_size(W, H, kernel_size, stride, padding):
     # W_out = int((W + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1)
     # H_out = int((H + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1)
     return W_out, H_out
-
-
-# Get layer dimensions from pytorch model summary
-def get_conv_layers_pytorch(model, input_size, batch_size):
-    layers = []
-    W, H, C = input_size
-    N = batch_size
-
-    for m in model.modules():
-        if isinstance(m, torch.nn.Conv2d):
-            M = m.out_channels
-            S = m.kernel_size[0]
-            R = m.kernel_size[1]
-            Wpad = m.padding[0]
-            Hpad = m.padding[1]
-            Wstride = m.stride[0]
-            Hstride = m.stride[1]
-
-            layer = (W, H, C, N, M, S, R, Wpad, Hpad, Wstride, Hstride)
-            layers.append(layer)
-
-            # print(f"in_size: {W}x{H}")
-            W, H = get_output_size(W, H, S, Wstride, Wpad)
-            # print(f"out_size: {W}x{H}")
-            C = M
-
-        if isinstance(m, torch.nn.MaxPool2d):
-            Wstride = m.stride
-            Hstride = m.stride
-            W = W // Wstride
-            H = H // Hstride
-    return layers
 
 
 # Get layer dimensions from pytorch model summary
@@ -94,33 +60,6 @@ def get_conv_layers_keras(model, input_size, batch_size):
     return layers
 
 
-# Create Timeloop layer description from parsed pytorch model
-def parse_pytorch_model(input_size, model_file, batch_size, out_dir, out_file, api_name, verbose=False):
-    input_size = tuple((int(d) for d in str.split(input_size, ",")))
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    # Assuming that the model contains both the architecture and the weights
-    model = torch.load(model_file)
-    cnn_layers = get_conv_layers_pytorch(model, input_size, batch_size)
-
-    if verbose:
-        print("# Model: " + str(model_file.split(".")[0]))
-        print("# W, H, C, N, M, S, R, Wpad, Hpad, Wstride, Hstride")
-        print("cnn_layers = [")
-        for layer in cnn_layers:
-            print("    " + str(layer) + ",")
-        print("]")
-
-    with open(os.path.join(out_dir, out_file + ".yaml"), "w") as f:
-        f.write(f"api: {api_name}\n")
-        f.write(f"model: " + str(model_file.split('.')[0]) + "\n")
-        f.write("# W, H, C, N, M, S, R, Wpad, Hpad, Wstride, Hstride\n")
-        f.write("layers:\n")
-        for layer in cnn_layers:
-            f.write("  - [")
-            f.write(", ".join(str(p) for p in layer))
-            f.write("]\n")
-
-
 # Create Timeloop layer description from parsed keras model
 def parse_keras_model(input_size, model_file, batch_size, out_dir, out_file, api_name, verbose=False):
     input_size = tuple((int(d) for d in str.split(input_size, ",")))
@@ -147,7 +86,8 @@ def parse_keras_model(input_size, model_file, batch_size, out_dir, out_file, api
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter, prog="parse_model", description="Parser of keras/pytorch models into Timeloop layer description format")
+    parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter, prog="parse_model",
+                                     description="Parser of keras/pytorch models into Timeloop layer description format")
     parser.add_argument('-a', '--api_name', type=str, default="keras", help="api choices: pytorch, keras")
     parser.add_argument('-i', '--input_size', type=str, default="224,224,3", help='input size in format W,H,C')
     parser.add_argument('-v', '--verbose', default=False, action='store_true')
@@ -169,7 +109,6 @@ if __name__ == "__main__":
         os.makedirs(out_dir)
 
     # Process model based on chosen API and return layer dimensions
-    if opt.api_name == 'pytorch':
-        parse_pytorch_model(opt.input_size, opt.model_file, opt.batch_size, out_dir, opt.outfile, opt.api_name, opt.verbose)
-    elif opt.api_name == 'keras':
-        parse_keras_model(opt.input_size, opt.model_file, opt.batch_size, out_dir, opt.outfile, opt.api_name, opt.verbose)
+    if opt.api_name == 'keras':
+        parse_keras_model(opt.input_size, opt.model_file, opt.batch_size, out_dir, opt.outfile, opt.api_name,
+                          opt.verbose)
