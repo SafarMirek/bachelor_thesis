@@ -60,12 +60,9 @@ class MapperFacade:
 
         # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
         if verbose:
-            print("Running: ")
-            print(self.mode + " " + self.arch + " " + self.components + " " + self.constraints + " " + mapper + " " + workload + " -o tmp_outputs")
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
                            + [mapper, workload, "-o", "tmp_outputs"], check=True)
         else:
-            print(self.mode + " " + self.arch + " " + self.components + " " + self.constraints + " " + mapper + " " + workload + " -o tmp_outputs")
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
                            + [mapper, workload, "-o", "tmp_outputs"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
