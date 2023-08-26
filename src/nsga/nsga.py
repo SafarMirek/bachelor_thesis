@@ -2,6 +2,7 @@
 # Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
 import abc
+import datetime
 import glob
 import gzip
 import json
@@ -143,6 +144,10 @@ class NSGA(abc.ABC):
 
         self.ensure_logs_dir()
 
+        if previous_run is None:
+            self._check_if_empty()
+            self._generate_run_information()
+
     def _restore_state(self, previous_run):
         """
         Restores state from previous run
@@ -165,6 +170,24 @@ class NSGA(abc.ABC):
             os.makedirs(self.logs_dir)
         except FileExistsError:
             pass  # Folder already exists no need to create it
+
+    def _check_if_empty(self):
+        files = os.listdir(self.logs_dir)
+        if len(files) > 0:
+            print("ERROR: Folder for new run is not empty")
+            exit(1)
+
+    def _generate_run_information(self):
+        run_info = {
+            "start_time": datetime.datetime.now(),
+            "configuration": self.get_configuration()
+        }
+        with open("configuration.json", "w") as outfile:
+            json.dump(run_info, outfile)
+
+    @abc.abstractmethod
+    def get_configuration(self):
+        pass
 
     def get_pareto_front(self, values):
         """

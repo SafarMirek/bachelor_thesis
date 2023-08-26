@@ -12,7 +12,7 @@ from nsga.nsga_qat_multigpu import MultiGPUQATNSGA
 
 def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_size=64, qat_epochs=6, generations=25,
          previous_run=None, cache_datasets=False, approx=False, act_quant_wait=0, per_channel=True, symmetric=True,
-         learning_rate=0.2, multigpu=False):
+         learning_rate=0.2, multigpu=False, exhaustive=False):
     """
     Run NSGA-II for searching of best mixed-precision quantization configurations of layers
 
@@ -31,7 +31,10 @@ def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_
     :param symmetric: Weights are quantized symmetrically
     :param learning_rate: Starting learning rate of quantization aware training
     :param multigpu: Use multiple GPUs
+    :param exhaustive: Use exhaustive timeloop heuristic or random heuristic
     """
+
+    timeloop_heuristic = "exhaustive" if exhaustive else "random"
 
     if multigpu:
         print("Initializing QAT NSGA-II MultiGPU")
@@ -40,7 +43,8 @@ def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_
                                batch_size=batch_size, qat_epochs=qat_epochs, generations=generations,
                                previous_run=previous_run,
                                cache_datasets=cache_datasets, approx=approx, activation_quant_wait=act_quant_wait,
-                               per_channel=per_channel, symmetric=symmetric, learning_rate=learning_rate)
+                               per_channel=per_channel, symmetric=symmetric, learning_rate=learning_rate,
+                               timeloop_heuristic=timeloop_heuristic)
     else:
         print("Initializing QAT NSGA-II")
         nsga = QATNSGA(logs_dir=logs_dir, base_model_path=base_model_path, parent_size=parent_size,
@@ -48,7 +52,8 @@ def main(*, logs_dir, base_model_path, parent_size=25, offspring_size=25, batch_
                        batch_size=batch_size, qat_epochs=qat_epochs, generations=generations,
                        previous_run=previous_run,
                        cache_datasets=cache_datasets, approx=approx, activation_quant_wait=act_quant_wait,
-                       per_channel=per_channel, symmetric=symmetric, learning_rate=learning_rate)
+                       per_channel=per_channel, symmetric=symmetric, learning_rate=learning_rate,
+                       timeloop_heuristic=timeloop_heuristic)
 
     nsga.run()
 
@@ -118,6 +123,7 @@ if __name__ == "__main__":
         help='Cache datasets during QAT')
 
     parser.add_argument('--approx', default=False, action='store_true')
+    parser.add_argument('--exhaustive', default=False, action='store_true')
     parser.add_argument('--per-channel', default=False, action='store_true')
     parser.add_argument('--symmetric', default=False, action='store_true')
 

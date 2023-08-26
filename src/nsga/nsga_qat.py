@@ -35,7 +35,7 @@ class QATNSGA(NSGA):
 
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
-                 per_channel=True, symmetric=True, learning_rate=0.2):
+                 per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random"):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
                          objectives=[("accuracy", True), ("total_energy", False), ("total_cycles", False)],
@@ -50,7 +50,24 @@ class QATNSGA(NSGA):
         self.per_channel = per_channel
         self.symmetric = symmetric
         self.learning_rate = learning_rate
+        self.timeloop_heuristic = timeloop_heuristic
         self.quantizable_layers = self.get_analyzer().get_number_of_quantizable_layers()
+
+    def get_configuration(self):
+        return {
+            "parent_size": self.parent_size,
+            "offspring_size": self.offspring_size,
+            "batch_size": self.batch_size,
+            "qat_epochs": self.qat_epochs,
+            "approx": self.approx,
+            "activation_quant_wait": self.activation_quant_wait,
+            "per_channel": self.per_channel,
+            "symmetric": self.symmetric,
+            "learning_rate": self.learning_rate,
+            "objectives": self.objectives,
+            "timeloop_heuristic": self.timeloop_heuristic,
+            "base_model": os.path.abspath(self.base_model_path)
+        }
 
     def get_maximal(self):
         """Returns maximal values for objectives"""
@@ -117,7 +134,7 @@ class QATAnalyzer(NSGAAnalyzer):
 
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
-                 logs_dir_pattern=None, checkpoints_dir_pattern=None):
+                 logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="random"):
         self.base_model_path = base_model_path
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
@@ -131,6 +148,7 @@ class QATAnalyzer(NSGAAnalyzer):
         self.symmetric = symmetric
         self.logs_dir_pattern = logs_dir_pattern
         self.checkpoints_dir_pattern = checkpoints_dir_pattern
+        self.timeloop_heuristic = timeloop_heuristic
         self._mask = None
 
         self.ensure_cache_folder()
@@ -138,9 +156,9 @@ class QATAnalyzer(NSGAAnalyzer):
         # Current cache file
         i = 0
         while True:
-            self.cache_file = "cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_%d.json.gz" % (
+            self.cache_file = "cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_%s_%d.json.gz" % (
                 "mobilenet", batch_size, qat_epochs, bn_freeze, learning_rate, warmup, activation_quant_wait, approx,
-                per_channel, symmetric,
+                per_channel, symmetric, timeloop_heuristic,
                 i)
             if not os.path.isfile(self.cache_file):
                 break
@@ -239,7 +257,7 @@ class QATAnalyzer(NSGAAnalyzer):
                                                                           bitwidths=get_config_from_model(
                                                                               quantized_model),
                                                                           input_size="224,224,3", threads="one",
-                                                                          heuristic="random",
+                                                                          heuristic=self.timeloop_heuristic,
                                                                           metrics=("energy", "delay"))
                 total_energy = sum(map(lambda x: x["Energy [uJ]"], hardware_params.values()))
                 total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))

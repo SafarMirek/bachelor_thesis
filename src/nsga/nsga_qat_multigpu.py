@@ -5,12 +5,9 @@ import gzip
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
-from functools import reduce
-from multiprocessing import Process
 
 import tensorflow as tf
 
-import calculate_model_size_lib as calculate_model_size
 import mobilenet_tinyimagenet_qat
 import nsga.nsga_qat
 from nsga.nsga import NSGAAnalyzer
@@ -18,15 +15,6 @@ from nsga.nsga import NSGAAnalyzer
 from queue import Queue
 
 from mapper_facade import MapperFacade
-
-from tensorflow_model_optimization.python.core.quantization.keras.quantize_wrapper import QuantizeWrapperV2
-
-from tf_quantization.layers.approx.quant_conv2D_batch_layer import ApproxQuantFusedConv2DBatchNormalizationLayer
-from tf_quantization.layers.approx.quant_depthwise_conv2d_bn_layer import \
-    ApproxQuantFusedDepthwiseConv2DBatchNormalizationLayer
-from tf_quantization.layers.quant_conv2D_batch_layer import QuantFusedConv2DBatchNormalizationLayer
-from tf_quantization.layers.quant_depthwise_conv2d_bn_layer import QuantFusedDepthwiseConv2DBatchNormalizationLayer
-import keras.layers
 
 
 class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
@@ -36,10 +24,10 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
 
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
-                 per_channel=True, symmetric=True, learning_rate=0.2):
+                 per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random"):
         super().__init__(logs_dir, base_model_path, parent_size, offspring_size, generations, batch_size, qat_epochs,
                          previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric,
-                         learning_rate)
+                         learning_rate, timeloop_heuristic)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
@@ -66,10 +54,11 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
 
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
-                 logs_dir_pattern=None, checkpoints_dir_pattern=None):
+                 logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="random"):
         super().__init__(base_model_path, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, cache_datasets,
                          approx,
-                         activation_quant_wait, per_channel, symmetric, logs_dir_pattern, checkpoints_dir_pattern)
+                         activation_quant_wait, per_channel, symmetric, logs_dir_pattern, checkpoints_dir_pattern,
+                         timeloop_heuristic)
         self._queue = None
 
     @property
@@ -133,7 +122,8 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                 accuracy = cache_sel[0]["accuracy"]
                 total_energy = cache_sel[0]["total_energy"]
                 total_cycles = cache_sel[0]["total_cycles"]
-                tf.print("Cache : %s;accuracy=%s;energy=%s,cycles=%s;" % (str(quant_conf), accuracy, total_energy, total_cycles))
+                tf.print("Cache : %s;accuracy=%s;energy=%s,cycles=%s;" % (
+                    str(quant_conf), accuracy, total_energy, total_cycles))
             else:  # Not found in cache
                 raise ValueError("All configurations should be in cache, how has this happends?")
 
@@ -150,9 +140,10 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
         if eval_param == "hardware_params":
             mapper_facade = MapperFacade()
             hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
-                                                                      bitwidths=nsga.nsga_qat.get_config_from_model(quantized_model),
+                                                                      bitwidths=nsga.nsga_qat.get_config_from_model(
+                                                                          quantized_model),
                                                                       input_size="224,224,3", threads="one",
-                                                                      heuristic="random",
+                                                                      heuristic=self.timeloop_heuristic,
                                                                       metrics=("energy", "delay"))
             total_energy = sum(map(lambda x: x["Energy [uJ]"], hardware_params.values()))
             total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))

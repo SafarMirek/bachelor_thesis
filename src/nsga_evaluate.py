@@ -2,6 +2,7 @@
 # Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
 import argparse
+import datetime
 import gzip
 import json
 import os
@@ -16,7 +17,7 @@ from nsga.nsga_qat_multigpu import MultiGPUQATAnalyzer
 
 def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_wait, learning_rate, warmup,
          mobilenet_path, multigpu, approx, per_channel, symmetric, checkpoints_dir_pattern, logs_dir_pattern,
-         configuration=None, all_parents=False, cache_datasets=False):
+         configuration=None, all_parents=False, cache_datasets=False, exhaustive=False):
     """
     Evaluates output of NSGA after quantization-aware training
 
@@ -40,6 +41,9 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
     :param cache_datasets: Cache datasets durings training of models
     """
 
+    timeloop_heuristic = "exhaustive" if exhaustive else "random"
+    start_time = datetime.datetime.now()
+
     if multigpu:
         analyzer = MultiGPUQATAnalyzer(batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
                                        learning_rate=learning_rate, warmup=warmup,
@@ -47,7 +51,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                        approx=approx, per_channel=per_channel, symmetric=symmetric,
                                        logs_dir_pattern=logs_dir_pattern,
                                        checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
-                                       base_model_path=mobilenet_path)
+                                       base_model_path=mobilenet_path, timeloop_heuristic=timeloop_heuristic)
     else:
         analyzer = QATAnalyzer(base_model_path=mobilenet_path, batch_size=batch_size, qat_epochs=qat_epochs,
                                bn_freeze=bn_freeze,
@@ -55,7 +59,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                activation_quant_wait=activation_quant_wait,
                                approx=approx, per_channel=per_channel, symmetric=symmetric,
                                logs_dir_pattern=logs_dir_pattern,
-                               checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets)
+                               checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
+                               timeloop_heuristic=timeloop_heuristic)
 
     if run is None and configuration is None:
         raise ValueError("Configuration for evaluation is missing")
@@ -75,7 +80,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
         merged = next_parent + offsprings
 
         if not all_parents:
-            pareto_ids = PyBspTreeArchive(2).filter([(-x["accuracy"], x["memory"]) for x in merged], returnIds=True)
+            pareto_ids = PyBspTreeArchive(2).filter(
+                [(-x["accuracy"], x["total_energy"], x["total_cycles"]) for x in merged], returnIds=True)
             pareto = [merged[i] for i in pareto_ids]
         else:
             pareto = next_parent
@@ -88,7 +94,29 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
     # make evaluation of best pareto front from given run
     analyzed_pareto = list(analyzer.analyze(pareto))
 
-    json.dump(analyzed_pareto, gzip.open(output_file, "wt", encoding="utf8"))
+    result = {
+        "evaluation_result": analyzed_pareto,
+        "start_time": start_time,
+        "end_time": datetime.datetime.now(),
+        "configuration": {
+            "batch_size": batch_size,
+            "base_model": os.path.abspath(mobilenet_path),
+            "qat_epochs": qat_epochs,
+            "approx": approx,
+            "bn_freeze": bn_freeze,
+            "learning_rate": learning_rate,
+            "warmup": warmup,
+            "activation_quant_wait": activation_quant_wait,
+            "per_channel": per_channel,
+            "symmetric": symmetric,
+            "logs_dir_pattern": logs_dir_pattern,
+            "checkpoints_dir_pattern": checkpoints_dir_pattern,
+            "cache_datasets": cache_datasets,
+            "timeloop_heuristic": timeloop_heuristic
+        }
+    }
+
+    json.dump(result, gzip.open(output_file, "wt", encoding="utf8"))
 
 
 if __name__ == "__main__":
@@ -121,6 +149,7 @@ if __name__ == "__main__":
     parser.add_argument('--per-channel', default=False, action='store_true')
     parser.add_argument('--symmetric', default=False, action='store_true')
     parser.add_argument('--all', default=False, action='store_true')
+    parser.add_argument('--exhaustive', default=False, action='store_true')
 
     parser.add_argument("--logs-dir-pattern", default="logs/mobilenet/%s")
     parser.add_argument("--checkpoints-dir-pattern", default="checkpoints/mobilenet/%s")
@@ -136,4 +165,4 @@ if __name__ == "__main__":
          warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu, approx=args.approx,
          per_channel=args.per_channel, symmetric=args.symmetric, logs_dir_pattern=args.logs_dir_pattern,
          checkpoints_dir_pattern=args.checkpoints_dir_pattern,
-         configuration=args.configuration, all_parents=args.all, cache_datasets=False)
+         configuration=args.configuration, all_parents=args.all, cache_datasets=False, exhaustive=args.exhaustive)
