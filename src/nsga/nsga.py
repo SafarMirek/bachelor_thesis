@@ -179,7 +179,7 @@ class NSGA(abc.ABC):
     def _generate_run_information(self):
         print("Generation configuration information to " + os.path.abspath(self.logs_dir + "/configuration.json"))
         run_info = {
-            "start_time": datetime.datetime.now(),
+            "start_time": datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'),
             "configuration": self.get_configuration()
         }
         with open(self.logs_dir + "/configuration.json", "w") as outfile:

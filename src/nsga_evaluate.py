@@ -96,8 +96,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
 
     result = {
         "evaluation_result": analyzed_pareto,
-        "start_time": start_time,
-        "end_time": datetime.datetime.now(),
+        "start_time": start_time.strftime('%Y-%m-%d_%H-%M-%S'),
+        "end_time": datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'),
         "configuration": {
             "batch_size": batch_size,
             "base_model": os.path.abspath(mobilenet_path),
