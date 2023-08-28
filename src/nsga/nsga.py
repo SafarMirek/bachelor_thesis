@@ -146,7 +146,6 @@ class NSGA(abc.ABC):
 
         if previous_run is None:
             self._check_if_empty()
-            self._generate_run_information()
 
     def _restore_state(self, previous_run):
         """
@@ -256,6 +255,8 @@ class NSGA(abc.ABC):
             parents = self.get_init_parents()
             next_parents = list(self.get_analyzer().analyze(parents))
             self.state = NSGAState(generation=0, parents=next_parents, offsprings=[])
+            
+            self._generate_run_information()
 
         while self.get_current_state().get_generation() <= self.generations:
             self.run_next_generation()
