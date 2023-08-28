@@ -199,7 +199,7 @@ class NSGA(abc.ABC):
         def map_obj_list(value):
             return [value[obj[0]] * (-1 if obj[1] else 1) for obj in self.objectives]
 
-        pareto_ids = PyBspTreeArchive(2).filter([map_obj_list(x) for x in values],
+        pareto_ids = PyBspTreeArchive(len(self.objectives)).filter([map_obj_list(x) for x in values],
                                                 returnIds=True)
 
         return pareto_ids
