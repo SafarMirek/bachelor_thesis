@@ -181,7 +181,7 @@ class NSGA(abc.ABC):
             "start_time": datetime.datetime.now(),
             "configuration": self.get_configuration()
         }
-        with open("configuration.json", "w") as outfile:
+        with open(self.logs_dir + "/configuration.json", "w") as outfile:
             json.dump(run_info, outfile)
 
     @abc.abstractmethod
@@ -255,7 +255,7 @@ class NSGA(abc.ABC):
             parents = self.get_init_parents()
             next_parents = list(self.get_analyzer().analyze(parents))
             self.state = NSGAState(generation=0, parents=next_parents, offsprings=[])
-            
+
             self._generate_run_information()
 
         while self.get_current_state().get_generation() <= self.generations:
