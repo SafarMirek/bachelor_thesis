@@ -7,6 +7,7 @@ import glob
 import json
 import csv
 import shutil
+import threading
 from typing import Tuple
 from construct_workloads.create_model import create_keras_model
 from construct_workloads.parse_model import parse_keras_model
@@ -33,6 +34,7 @@ class MapperFacade:
         self.arch = glob.glob(f"{self.configs_path}/architectures/{architecture}/*.yaml")[0]
         self.components = glob.glob(f"{self.configs_path}/architectures/{architecture}/components/*.yaml")
         self.constraints = glob.glob(f"{self.configs_path}/architectures/{architecture}/constraints/*.yaml")
+        self._thread_id = threading.get_ident()
 
         self.mode = f"timeloop-mapper"
 
@@ -55,25 +57,26 @@ class MapperFacade:
         mapper = glob.glob(f"{self.configs_path}/mapper_heuristics/{threads}_threads/{heuristic}/{metric_fname}*.yaml")[0]
 
         start_time = time.time()
-        if not os.path.exists("tmp_outputs"):
-            os.makedirs("tmp_outputs")
+        tmp_dir = f"tmp_outputs_{self._thread_id}"
+        if not os.path.exists(tmp_dir):
+            os.makedirs(tmp_dir)
 
         # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
         if verbose:
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
-                           + [mapper, workload, "-o", "tmp_outputs"], check=True)
+                           + [mapper, workload, "-o", tmp_dir], check=True)
         else:
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
-                           + [mapper, workload, "-o", "tmp_outputs"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                           + [mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
         # Reading the CSV file into a dictionary
-        with open(f"tmp_outputs/{self.mode}.stats.csv", "r") as f:
+        with open(f"{tmp_dir}/{self.mode}.stats.csv", "r") as f:
             reader = csv.DictReader(f)
             result_dict = next(reader)
 
         # Deleting the tmp files
         if clean:
-            shutil.rmtree("tmp_outputs")
+            shutil.rmtree(tmp_dir)
             [os.remove(f) for f in glob.glob('./*.log')]
 
         end_time = time.time()
