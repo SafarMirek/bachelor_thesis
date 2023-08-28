@@ -77,7 +77,6 @@ class MapperFacade:
         # Deleting the tmp files
         if clean:
             shutil.rmtree(tmp_dir)
-            [os.remove(f) for f in glob.glob('./*.log')]
 
         end_time = time.time()
         runtime = end_time - start_time
