@@ -253,11 +253,11 @@ class NSGA(abc.ABC):
         Runs specified number of generations
         """
         if self.state is None:
+            self._generate_run_information()
+
             parents = self.get_init_parents()
             next_parents = list(self.get_analyzer().analyze(parents))
             self.state = NSGAState(generation=0, parents=next_parents, offsprings=[])
-
-            self._generate_run_information()
 
         while self.get_current_state().get_generation() <= self.generations:
             self.run_next_generation()
