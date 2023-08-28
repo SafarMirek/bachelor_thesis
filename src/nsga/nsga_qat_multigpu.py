@@ -30,7 +30,8 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
                          learning_rate, timeloop_heuristic)
 
     def init_analyzer(self) -> NSGAAnalyzer:
-        logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
+        # logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
+        logs_dir_pattern = None
         checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
         return MultiGPUQATAnalyzer(batch_size=self.batch_size, qat_epochs=self.qat_epochs,
                                    learning_rate=self.learning_rate, cache_datasets=self.cache_datasets,

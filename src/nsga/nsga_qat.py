@@ -88,7 +88,8 @@ class QATNSGA(NSGA):
         Init NSGAAnalyzer
         :return: new instance of NSGAAnalyzer
         """
-        logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
+        # logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
+        logs_dir_pattern = None
         checkpoints_dir_pattern = os.path.join(self.logs_dir, "checkpoints/%s")
         return QATAnalyzer(base_model_path=self.base_model_path, batch_size=self.batch_size, qat_epochs=self.qat_epochs,
                            learning_rate=self.learning_rate,
