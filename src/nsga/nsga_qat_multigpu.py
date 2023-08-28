@@ -146,8 +146,8 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                                                                       input_size="224,224,3", threads="one",
                                                                       heuristic=self.timeloop_heuristic,
                                                                       metrics=("energy", "delay"))
-            total_energy = sum(map(lambda x: x["Energy [uJ]"], hardware_params.values()))
-            total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
+            total_energy = sum(map(lambda x: float(x["Energy [uJ]"]), hardware_params.values()))
+            total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
 
             return {"total_energy": total_energy, "total_cycles": total_cycles}
 
