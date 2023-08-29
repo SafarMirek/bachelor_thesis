@@ -83,7 +83,7 @@ class MapperFacade:
                            + [modified_mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
         # Reading the CSV file into a dictionary
-        with open(f"{tmp_dir}/{self.mode}.stats.csv", "r") as f:
+        with open(f"{tmp_dir}/{self.mode}_{self._thread_id}.stats.csv", "r") as f:
             reader = csv.DictReader(f)
             result_dict = next(reader)
 
