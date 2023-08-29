@@ -8,6 +8,7 @@ import json
 import csv
 import shutil
 import threading
+import yaml
 from typing import Tuple
 from construct_workloads.create_model import create_keras_model
 from construct_workloads.parse_model import parse_keras_model
@@ -56,6 +57,18 @@ class MapperFacade:
         metric_fname = "edp" if metrics[0] == "edp" else f"{metrics[0]}-{metrics[1]}"
         mapper = glob.glob(f"{self.configs_path}/mapper_heuristics/{threads}_threads/{heuristic}/{metric_fname}*.yaml")[0]
 
+        with open(mapper, "r") as map:
+            try:
+                config_dict = yaml.safe_load(map)
+            except yaml.YAMLError as e:
+                print(e)
+        config_dict["mapper"]["out_prefix"] = f"{self.mode}_{self._thread_id}"
+
+        # Write the modified YAML data to a temporary file
+        modified_mapper = os.path.splitext(mapper)[0] + f"_{self._thread_id}.yaml"
+        with open(modified_mapper, "w") as modified_map:
+            yaml.dump(config_dict, modified_map)
+
         start_time = time.time()
         tmp_dir = f"tmp_outputs_{self._thread_id}"
         if not os.path.exists(tmp_dir):
@@ -64,10 +77,10 @@ class MapperFacade:
         # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
         if verbose:
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
-                           + [mapper, workload, "-o", tmp_dir], check=True)
+                           + [modified_mapper, workload, "-o", tmp_dir], check=True)
         else:
             subprocess.run([self.mode, self.arch] + self.components + self.constraints
-                           + [mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                           + [modified_mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
         # Reading the CSV file into a dictionary
         with open(f"{tmp_dir}/{self.mode}.stats.csv", "r") as f:
@@ -77,6 +90,7 @@ class MapperFacade:
         # Deleting the tmp files
         if clean:
             shutil.rmtree(tmp_dir)
+            os.remove(modified_mapper)
 
         end_time = time.time()
         runtime = end_time - start_time
