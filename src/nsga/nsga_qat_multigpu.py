@@ -61,6 +61,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                          activation_quant_wait, per_channel, symmetric, logs_dir_pattern, checkpoints_dir_pattern,
                          timeloop_heuristic)
         self._queue = None
+        self._timeloop_pool = ThreadPoolExecutor(max_workers=1)
 
     @property
     def queue(self):
@@ -91,7 +92,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
 
         # Run evaluation for all configurations that needs it
         logical_devices = tf.config.list_logical_devices('GPU')
-        pool = ThreadPoolExecutor(max_workers=len(logical_devices))
+        pool = ThreadPoolExecutor(max_workers=len(logical_devices))  # One thread for timeloop
 
         print("Needs eval: " + str(needs_eval) + " on " + str(len(logical_devices)) + " GPUs.")
         results = list(pool.map(self.get_eval_of_config, needs_eval))
@@ -101,8 +102,8 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = {
                 "quant_conf": quant_conf,
                 "accuracy": float(results[i][0]),
-                "total_cycles": int(results[i][1]["total_cycles"]),
-                "total_energy": float(results[i][1]["total_energy"]),
+                "total_cycles": int(results[i][1].result()["total_cycles"]),
+                "total_energy": float(results[i][1].result()["total_energy"]),
             }
             self.cache.append(node)
             json.dump(self.cache, gzip.open(self.cache_file, "wt", encoding="utf8"))
@@ -143,9 +144,10 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                       bitwidths=nsga.nsga_qat.get_config_from_model(
                                                                           quantized_model),
-                                                                      input_size="224,224,3", threads="one",
+                                                                      input_size="224,224,3", threads="all",
                                                                       heuristic=self.timeloop_heuristic,
                                                                       metrics=("energy", "delay"),
+                                                                      total_valid=30000,
                                                                       verbose=True)
             total_energy = sum(map(lambda x: float(x["Energy [uJ]"]), hardware_params.values()))
             total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
@@ -191,10 +193,15 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             with tf.device(device.name):
                 quantized_model = self.quantize_model_by_config(quant_config)
 
-                pool = ThreadPoolExecutor(max_workers=2)
-                (accuracy, hardware_params) = pool.map(
-                    lambda x: self.eval_param(x, quantized_model, quant_config, device.name),
-                    ["accuracy", "hardware_params"])
+                hardware_params = self._timeloop_pool.submit(self.eval_param, "hardware_params", quantized_model,
+                                                             quant_config, device.name)
+
+                accuracy = self.eval_param("accuracy", quantized_model, quant_config, device.name)
+
+                # pool = ThreadPoolExecutor(max_workers=2)
+                # (accuracy, hardware_params) = pool.map(
+                #    lambda x: self.eval_param(x, quantized_model, quant_config, device.name),
+                #    ["accuracy", "hardware_params"])
 
                 return accuracy, hardware_params
         finally:

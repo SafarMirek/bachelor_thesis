@@ -257,9 +257,10 @@ class QATAnalyzer(NSGAAnalyzer):
                 hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                           bitwidths=get_config_from_model(
                                                                               quantized_model),
-                                                                          input_size="224,224,3", threads="one",
+                                                                          input_size="224,224,3", threads="all",
                                                                           heuristic=self.timeloop_heuristic,
-                                                                          metrics=("energy", "delay"))
+                                                                          metrics=("energy", "delay"), verbose=True,
+                                                                          total_valid=30000)
                 total_energy = sum(map(lambda x: x["Energy [uJ]"], hardware_params.values()))
                 total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
 
