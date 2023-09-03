@@ -73,7 +73,7 @@ class QATNSGA(NSGA):
         """Returns maximal values for objectives"""
         print("Getting maximal values of metrics...")
 
-        results = list(self.get_analyzer().analyze([{"quant_config": [8 for _ in range(self.quantizable_layers)]}]))[0]
+        results = list(self.get_analyzer().analyze([{"quant_conf": [8 for _ in range(self.quantizable_layers)]}]))[0]
 
         return {
             "accuracy": results["accuracy"],
