@@ -73,14 +73,12 @@ class QATNSGA(NSGA):
         """Returns maximal values for objectives"""
         print("Getting maximal values of metrics...")
 
-        results = self.get_analyzer().analyze([{"quant_config": [8 for _ in range(self.quantizable_layers)]}])
-        accuracy = results[0]
-        hardware_params = results[1]
+        results = list(self.get_analyzer().analyze([{"quant_config": [8 for _ in range(self.quantizable_layers)]}]))[0]
 
         return {
-            "accuracy": accuracy,
-            "total_energy": float(hardware_params["total_energy"]),
-            "total_cycles": int(hardware_params["total_cycles"])
+            "accuracy": results["accuracy"],
+            "total_energy": results["total_energy"],
+            "total_cycles": results["total_cycles"]
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
