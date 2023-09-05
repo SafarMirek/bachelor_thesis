@@ -49,7 +49,7 @@ def main(*, noshow, all, approx, per_channel, symmetric, configurations, act_qua
     for configuration in configurations:
         title = configuration["title_en"] if en else configuration["title"]
         runs_folder = configuration["run_folder"]
-        memory_8bit_ref = configuration["base_memory"]
+        #memory_8bit_ref = configuration["base_memory"]
         ref_accuracy = configuration["float_accuracy"]
         alldata = {}
 
@@ -57,40 +57,42 @@ def main(*, noshow, all, approx, per_channel, symmetric, configurations, act_qua
             gen = int(re.match(r".*run\.(\d+)\.json\.gz", fn).group(1))
             alldata[gen] = json.load(gzip.open(fn))
             for record in alldata[gen]["parent"] + alldata[gen]["offspring"]:
-                record["memory_percent"] = record["memory"] / memory_8bit_ref
+            #    record["memory_percent"] = record["memory"] / memory_8bit_ref
                 record["accuracy_percent"] = record["accuracy"] / ref_accuracy
 
         selected_generations = [1] + configuration["generations"]
         colors = ["black", "tab:green", "tab:green", "#31a354", "#006d2c", "#005723", "#00411a", "#00210d"]
         colors_alpha = [1, 0.5, 1, 1, 1, 1, 1, 1]
 
-        fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(8, 5))
-        (ax1) = axes
+        fig, axes = plt.subplots(ncols=2, nrows=2, figsize=(8, 5))
+        (ax1, ax2, ax3) = axes
 
         ax1.set_title(title)
+        ax2.set_title(title)
+        ax3.set_title(title)
 
         if args.en:
-            ax1.set_xlabel("Size of weights in comparison to 8bit model [%]")
-            ax1.set_ylabel("Top-1 relative accuracy after partly fine-tuning [%]")
+            ax1.set_xlabel("Energy [uJ]")
+            ax1.set_ylabel("Top-1 relative accuracy after partly fine-tuning")
         else:
-            ax1.set_xlabel("Velikost vah v porovnání s 8-bitovým modelem [%]")
-            ax1.set_ylabel("Top-1 relativní přesnost po částečném dotrénování [%]")
+            ax1.set_xlabel("Energy [uJ]")
+            ax1.set_ylabel("Top-1 relativní přesnost po částečném dotrénování")
 
         ax1.set_ylim(0, 1.05)
-        ax1.set_xlim(0, 1)
+        #ax1.set_xlim(0, 700000)
 
-        ax1.xaxis.set_major_formatter(FuncFormatter(percent))
+        #ax1.xaxis.set_major_formatter(FuncFormatter(percent))
         ax1.yaxis.set_major_formatter(FuncFormatter(percent))
 
         for i, generation in enumerate(selected_generations):
             color = colors[i]
             color_alpha = colors_alpha[i]
             data = alldata[generation]["parent"]
-            data = apply_pareto_filter(data)
+            data = apply_pareto_filter(data, sort_by="total_edp")
 
             label = "Best configurations" if en else "Nejlepší konfigurace"
 
-            ax1.step([x["memory_percent"] for x in data], [x["accuracy_percent"] for x in data], color=color,
+            ax1.step([x["total_edp"] for x in data], [x["accuracy_percent"] for x in data], color=color,
                      label=f"{label} ({generation}. gen)", where="post", marker="x" if i == 0 else "o", markersize=4,
                      linewidth=0.5,
                      linestyle=":", alpha=color_alpha)

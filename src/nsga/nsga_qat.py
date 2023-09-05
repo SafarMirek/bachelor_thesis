@@ -38,7 +38,7 @@ class QATNSGA(NSGA):
                  per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random"):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
-                         objectives=[("accuracy", True), ("total_energy", False), ("total_cycles", False)],
+                         objectives=[("accuracy", True), ("total_edp", False)],
                          previous_run=previous_run
                          )
         self.base_model_path = base_model_path
@@ -77,8 +77,8 @@ class QATNSGA(NSGA):
 
         return {
             "accuracy": results["accuracy"],
-            "total_energy": results["total_energy"],
-            "total_cycles": results["total_cycles"]
+            "total_edp": results["total_edp"],
+            #"total_cycles": results["total_cycles"]
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
@@ -219,10 +219,10 @@ class QATAnalyzer(NSGAAnalyzer):
             # Get the accuracy
             if len(cache_sel) >= 1:  # Found in cache
                 accuracy = cache_sel[0]["accuracy"]
-                total_energy = cache_sel[0]["total_energy"]
-                total_cycles = cache_sel[0]["total_cycles"]
-                tf.print("Cache : %s;accuracy=%s;energy=%s,cycles=%s;" % (
-                    str(quant_conf), accuracy, total_energy, total_cycles))
+                total_edp = cache_sel[0]["total_edp"]
+               #total_cycles = cache_sel[0]["total_cycles"]
+                tf.print("Cache : %s;accuracy=%s;edp=%s;" % (
+                    str(quant_conf), accuracy, total_edp))
             else:  # Not found in cache
                 quantized_model = self.quantize_model_by_config(quant_conf)
 
@@ -255,19 +255,19 @@ class QATAnalyzer(NSGAAnalyzer):
                 hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                           bitwidths=get_config_from_model(
                                                                               quantized_model),
-                                                                          input_size="224,224,3", threads="all",
+                                                                          input_size="224,224,3", threads=24,
                                                                           heuristic=self.timeloop_heuristic,
-                                                                          metrics=("energy", "delay"), verbose=True,
+                                                                          metrics=("edp", ""), verbose=True,
                                                                           total_valid=30000)
-                total_energy = sum(map(lambda x: x["Energy [uJ]"], hardware_params.values()))
-                total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
+                total_edp = sum(map(lambda x: x["EDP [J*cycle]"], hardware_params.values()))
+                #total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
 
             # Create output node
             node = node_conf.copy()
             node["quant_conf"] = quant_conf
             node["accuracy"] = float(accuracy)
-            node["total_energy"] = float(total_energy)
-            node["total_cycles"] = int(total_cycles)
+            node["total_edp"] = float(total_edp)
+            #node["total_cycles"] = int(total_cycles)
 
             if len(cache_sel) == 0:  # If the data are not from the cache, cache it
                 self.cache.append(node)

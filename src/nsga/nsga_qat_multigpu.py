@@ -102,8 +102,8 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = {
                 "quant_conf": quant_conf,
                 "accuracy": float(results[i][0]),
-                "total_cycles": int(results[i][1].result()["total_cycles"]),
-                "total_energy": float(results[i][1].result()["total_energy"]),
+                "total_edp": float(results[i][1].result()["total_edp"]),
+                #"total_energy": float(results[i][1].result()["total_energy"]),
             }
             self.cache.append(node)
             json.dump(self.cache, gzip.open(self.cache_file, "wt", encoding="utf8"))
@@ -122,10 +122,10 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             # Get the accuracy
             if len(cache_sel) >= 1:  # Found in cache
                 accuracy = cache_sel[0]["accuracy"]
-                total_energy = cache_sel[0]["total_energy"]
-                total_cycles = cache_sel[0]["total_cycles"]
-                tf.print("Cache : %s;accuracy=%s;energy=%s,cycles=%s;" % (
-                    str(quant_conf), accuracy, total_energy, total_cycles))
+                total_edp = cache_sel[0]["total_edp"]
+                #total_cycles = cache_sel[0]["total_cycles"]
+                tf.print("Cache : %s;accuracy=%s;edp=%s;" % (
+                    str(quant_conf), accuracy, total_edp))
             else:  # Not found in cache
                 raise ValueError("All configurations should be in cache, how has this happends?")
 
@@ -133,8 +133,8 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = node_conf.copy()
             node["quant_conf"] = quant_conf
             node["accuracy"] = float(accuracy)
-            node["total_energy"] = float(total_energy)
-            node["total_cycles"] = int(total_cycles)
+            node["total_edp"] = float(total_edp)
+            #node["total_cycles"] = int(total_cycles)
 
             yield node
 
@@ -144,15 +144,15 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                       bitwidths=nsga.nsga_qat.get_config_from_model(
                                                                           quantized_model),
-                                                                      input_size="224,224,3", threads="all",
+                                                                      input_size="224,224,3", threads=24,
                                                                       heuristic=self.timeloop_heuristic,
-                                                                      metrics=("energy", "delay"),
+                                                                      metrics=("edp", ""),
                                                                       total_valid=30000,
                                                                       verbose=True)
-            total_energy = sum(map(lambda x: float(x["Energy [uJ]"]), hardware_params.values()))
-            total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
+            total_edp = sum(map(lambda x: float(x["EDP [J*cycle]"]), hardware_params.values()))
+            #total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
 
-            return {"total_energy": total_energy, "total_cycles": total_cycles}
+            return {"total_edp": total_edp}
 
         elif eval_param == "accuracy":
             with tf.device(device_name):

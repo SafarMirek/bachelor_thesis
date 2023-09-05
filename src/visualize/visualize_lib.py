@@ -9,7 +9,7 @@ import os
 from paretoarchive import PyBspTreeArchive
 
 
-def load_data(run_dir, pareto_filter=False, pareto_x="memory", pareto_y="accuracy"):
+def load_data(run_dir, pareto_filter=False, eval_prefix="eval.", sort_by="total_edp"):
     """
     Finds run evaluation and returns its data
     :param run_dir: Directory to NSGA run
@@ -18,14 +18,14 @@ def load_data(run_dir, pareto_filter=False, pareto_x="memory", pareto_y="accurac
     :param pareto_y: objective 2
     :return: evaluated results of NSGA run
     """
-    fn = sorted(glob.glob(os.path.join(run_dir, "eval.*.json.gz")))
+    fn = sorted(glob.glob(os.path.join(run_dir, eval_prefix + "*.json.gz")))
     if len(fn) == 0:
         return []
 
     latest_fn = fn[-1]
-    data = json.load(gzip.open(latest_fn))
+    data = json.load(gzip.open(latest_fn))["evaluation_result"]
 
-    orig_fn = latest_fn.replace("eval.", "")
+    orig_fn = latest_fn.replace(eval_prefix, "")
     try:
         orig_data = json.load(gzip.open(orig_fn))
         orig_data = orig_data["parent"] + orig_data["offspring"]
@@ -33,7 +33,7 @@ def load_data(run_dir, pareto_filter=False, pareto_x="memory", pareto_y="accurac
         orig_data = []
 
     if pareto_filter:
-        data = apply_pareto_filter(data, pareto_x, pareto_y)
+        data = apply_pareto_filter(data, sort_by=sort_by)
 
     for record in data:
         before_finetuning = list(filter(lambda x: x["quant_conf"] == record["quant_conf"], orig_data))
@@ -43,10 +43,10 @@ def load_data(run_dir, pareto_filter=False, pareto_x="memory", pareto_y="accurac
         else:
             record["accuracy_max"] = record["accuracy"]
 
-    return sorted(data, key=lambda x: x[pareto_x])
+    return sorted(data, key=lambda x: x[sort_by])
 
 
-def apply_pareto_filter(data, pareto_x="memory", pareto_y="accuracy"):
+def apply_pareto_filter(data, sort_by="total_edp"):
     """
     Returns only best Pareto-optimal set from provided data
 
@@ -56,7 +56,8 @@ def apply_pareto_filter(data, pareto_x="memory", pareto_y="accuracy"):
     :return: List of Pareto-optimal set ordered by first optimization parameter
     """
     pareto_data = [data[x] for x in
-                   PyBspTreeArchive(2, minimizeObjective2=False).filter([(i[pareto_x], i[pareto_y]) for i in data],
-                                                                        returnIds=True)]
+                   PyBspTreeArchive(2, minimizeObjective2=False).filter(
+                       [(i["total_edp"], i["accuracy"]) for i in data],
+                       returnIds=True)]
 
-    return sorted(pareto_data, key=lambda x: x[pareto_x])
+    return sorted(pareto_data, key=lambda x: x[sort_by])
