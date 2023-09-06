@@ -105,7 +105,7 @@ class MapperFacade:
     Returns:
         dict: Dictionary containing the best mapping's HW parameters and total runtime of the timeloop-mapper call.
     """
-    def run_one_workload(self, workload: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: Tuple[str, str] = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True, bitwidth: str) -> dict:
+    def run_one_workload(self, workload: str, bitwidth: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: Tuple[str, str] = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True) -> dict:
         mapper = f"{self.configs_path}/mapper_heuristics/mapper.yaml"
 
         if not os.path.exists("timeloop_cache"):
@@ -114,7 +114,7 @@ class MapperFacade:
             with open("timeloop_cache/cache.json", "r") as file:
                 cache = json.load(file)
         else:
-            cache = {}        
+            cache = {}
 
         layer = workload.split("/")[-1].split(".")[0]
         if layer in cache:
