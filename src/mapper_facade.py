@@ -108,8 +108,10 @@ class MapperFacade:
     def run_one_workload(self, workload: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: Tuple[str, str] = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True, bitwidth: str) -> dict:
         mapper = f"{self.configs_path}/mapper_heuristics/mapper.yaml"
 
-        if os.path.exists("cache.json"):
-            with open("cache.json", "r") as file:
+        if not os.path.exists("timeloop_cache"):
+            os.makedirs("timeloop_cache")
+        if os.path.exists("timeloop_cache/cache.json"):
+            with open("timeloop_cache/cache.json", "r") as file:
                 cache = json.load(file)
         else:
             cache = {}        
@@ -120,53 +122,55 @@ class MapperFacade:
                 # Return dictionary with the best found HW params and total mapper runtime from cache
                 return cache[layer][bitwidth]
         else:
-            with open(mapper, "r") as map:
-                try:
-                    config_dict = yaml.safe_load(map)
-                except yaml.YAMLError as e:
-                    print(e)
-                    sys.exit(1)
+            cache[layer] = {}  # Initialize cache[layer] as a dictionary
+ 
+        with open(mapper, "r") as map:
+            try:
+                config_dict = yaml.safe_load(map)
+            except yaml.YAMLError as e:
+                print(e)
+                sys.exit(1)
 
-            # Modify the mapper heuristic settings for the given settings
-            config_dict = self._modify_mapper_configs(config_dict, heuristic, metrics, threads, total_valid, log_all)
+        # Modify the mapper heuristic settings for the given settings
+        config_dict = self._modify_mapper_configs(config_dict, heuristic, metrics, threads, total_valid, log_all)
 
-            # Write the modified YAML data to a temporary file
-            modified_mapper = os.path.splitext(mapper)[0] + f"_{self._thread_id}.yaml"
-            with open(modified_mapper, "w") as modified_map:
-                yaml.dump(config_dict, modified_map)
+        # Write the modified YAML data to a temporary file
+        modified_mapper = os.path.splitext(mapper)[0] + f"_{self._thread_id}.yaml"
+        with open(modified_mapper, "w") as modified_map:
+            yaml.dump(config_dict, modified_map)
 
-            start_time = time.time()
-            tmp_dir = f"{out_dir}_{self._thread_id}"
-            if not os.path.exists(tmp_dir):
-                os.makedirs(tmp_dir)
+        start_time = time.time()
+        tmp_dir = f"{out_dir}_{self._thread_id}"
+        if not os.path.exists(tmp_dir):
+            os.makedirs(tmp_dir)
 
-            # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
-            if verbose:
-                subprocess.run([self._mode, self.arch] + self.components + self.constraints
-                            + [modified_mapper, workload, "-o", tmp_dir], check=True)
-            else:
-                subprocess.run([self._mode, self.arch] + self.components + self.constraints
-                            + [modified_mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
+        if verbose:
+            subprocess.run([self._mode, self.arch] + self.components + self.constraints
+                        + [modified_mapper, workload, "-o", tmp_dir], check=True)
+        else:
+            subprocess.run([self._mode, self.arch] + self.components + self.constraints
+                        + [modified_mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-            # Reading the CSV file into a dictionary
-            with open(f"{tmp_dir}/{self._mode}_{self._thread_id}.stats.csv", "r") as f:
-                reader = csv.DictReader(f)
-                result_dict = next(reader)
+        # Reading the CSV file into a dictionary
+        with open(f"{tmp_dir}/{self._mode}_{self._thread_id}.stats.csv", "r") as f:
+            reader = csv.DictReader(f)
+            result_dict = next(reader)
 
-            # Deleting the tmp files
-            if clean:
-                shutil.rmtree(tmp_dir)
-                os.remove(modified_mapper)
+        # Deleting the tmp files
+        if clean:
+            shutil.rmtree(tmp_dir)
+            os.remove(modified_mapper)
 
-            end_time = time.time()
-            runtime = end_time - start_time
+        end_time = time.time()
+        runtime = end_time - start_time
 
-            cache[layer][bitwidth] = {"HW": self._architecture, "Workload": layer, "Batch_size": batch_size, "Optimized_metric_1": metrics[0], "Optimized_metric_2": metrics[1], **result_dict, "Runtime [s]": "{:.2f}".format(runtime)}
-            with open("cache.json", "w") as file:
-                json.dump(cache, file, indent=2)
+        cache[layer][bitwidth] = {"HW": self._architecture, "Workload": layer, "Batch_size": batch_size, "Optimized_metric_1": metrics[0], "Optimized_metric_2": metrics[1], **result_dict, "Runtime [s]": "{:.2f}".format(runtime)}
+        with open("timeloop_cache/cache.json", "w") as file:
+            json.dump(cache, file, indent=2)
 
-            # Return dictionary with the best found HW params and total mapper runtime
-            return cache[layer][bitwidth]
+        # Return dictionary with the best found HW params and total mapper runtime
+        return cache[layer][bitwidth]
 
 
     """Method to run timeloop-mapper for all workloads (i.e. a CNN network's layers) in a given folder and mapper heuristic settings.
