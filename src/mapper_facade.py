@@ -105,55 +105,80 @@ class MapperFacade:
     Returns:
         dict: Dictionary containing the best mapping's HW parameters and total runtime of the timeloop-mapper call.
     """
-    def run_one_workload(self, workload: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: Tuple[str, str] = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True) -> dict:
+    def run_one_workload(self, workload: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: Tuple[str, str] = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True, bitwidth: str) -> dict:
         mapper = f"{self.configs_path}/mapper_heuristics/mapper.yaml"
 
-        with open(mapper, "r") as map:
-            try:
-                config_dict = yaml.safe_load(map)
-            except yaml.YAMLError as e:
-                print(e)
-                sys.exit(1)
-        # Modify the mapper heuristic settings for the given settings
-        config_dict = self._modify_mapper_configs(config_dict, heuristic, metrics, threads, total_valid, log_all)
-
-        # Write the modified YAML data to a temporary file
-        modified_mapper = os.path.splitext(mapper)[0] + f"_{self._thread_id}.yaml"
-        with open(modified_mapper, "w") as modified_map:
-            yaml.dump(config_dict, modified_map)
-
-        start_time = time.time()
-        tmp_dir = f"{out_dir}_{self._thread_id}"
-        if not os.path.exists(tmp_dir):
-            os.makedirs(tmp_dir)
-
-        # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
-        if verbose:
-            subprocess.run([self._mode, self.arch] + self.components + self.constraints
-                           + [modified_mapper, workload, "-o", tmp_dir], check=True)
+        if os.path.exists("cache.json"):
+            with open("cache.json", "r") as file:
+                cache = json.load(file)
         else:
-            subprocess.run([self._mode, self.arch] + self.components + self.constraints
-                           + [modified_mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            cache = {}        
 
-        # Reading the CSV file into a dictionary
-        with open(f"{tmp_dir}/{self._mode}_{self._thread_id}.stats.csv", "r") as f:
-            reader = csv.DictReader(f)
-            result_dict = next(reader)
+        layer = workload.split("/")[-1].split(".")[0]
+        if layer in cache:
+            if bitwidth in cache[layer]:
+                # Return dictionary with the best found HW params and total mapper runtime from cache
+                return cache[layer][bitwidth]
+        else:
+            with open(mapper, "r") as map:
+                try:
+                    config_dict = yaml.safe_load(map)
+                except yaml.YAMLError as e:
+                    print(e)
+                    sys.exit(1)
 
-        # Deleting the tmp files
-        if clean:
-            shutil.rmtree(tmp_dir)
-            os.remove(modified_mapper)
+            # Modify the mapper heuristic settings for the given settings
+            config_dict = self._modify_mapper_configs(config_dict, heuristic, metrics, threads, total_valid, log_all)
 
-        end_time = time.time()
-        runtime = end_time - start_time
-        # Return dictionary with the best found HW params and total mapper runtime
-        return {"HW": self._architecture, "Workload": workload.split("/")[-1].split(".")[0], "Batch_size": batch_size, "Optimized_metric_1": metrics[0], "Optimized_metric_2": metrics[1], **result_dict, "Runtime [s]": "{:.2f}".format(runtime)}
+            # Write the modified YAML data to a temporary file
+            modified_mapper = os.path.splitext(mapper)[0] + f"_{self._thread_id}.yaml"
+            with open(modified_mapper, "w") as modified_map:
+                yaml.dump(config_dict, modified_map)
+
+            start_time = time.time()
+            tmp_dir = f"{out_dir}_{self._thread_id}"
+            if not os.path.exists(tmp_dir):
+                os.makedirs(tmp_dir)
+
+            # Running the timeloop-mapper for the given workload and chosen mapper heuristic settings
+            if verbose:
+                subprocess.run([self._mode, self.arch] + self.components + self.constraints
+                            + [modified_mapper, workload, "-o", tmp_dir], check=True)
+            else:
+                subprocess.run([self._mode, self.arch] + self.components + self.constraints
+                            + [modified_mapper, workload, "-o", tmp_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+            # Reading the CSV file into a dictionary
+            with open(f"{tmp_dir}/{self._mode}_{self._thread_id}.stats.csv", "r") as f:
+                reader = csv.DictReader(f)
+                result_dict = next(reader)
+
+            # Deleting the tmp files
+            if clean:
+                shutil.rmtree(tmp_dir)
+                os.remove(modified_mapper)
+
+            end_time = time.time()
+            runtime = end_time - start_time
+
+            cache[layer][bitwidth] = {"HW": self._architecture, "Workload": layer, "Batch_size": batch_size, "Optimized_metric_1": metrics[0], "Optimized_metric_2": metrics[1], **result_dict, "Runtime [s]": "{:.2f}".format(runtime)}
+            with open("cache.json", "w") as file:
+                json.dump(cache, file, indent=2)
+
+            # Return dictionary with the best found HW params and total mapper runtime
+            return cache[layer][bitwidth]
+
 
     """Method to run timeloop-mapper for all workloads (i.e. a CNN network's layers) in a given folder and mapper heuristic settings.
 
     Args:
         workload (str): Relative path to the workload config file.
+        batch_size (int, optional): Batch size to be used for the model within the timeloop mapper. Defaults to 1.
+        bitwidths (object, optional): Bitwidths setting to be used for the model's workloads within timeloop mapper. Choices are:
+                                    None, tuple (i.e. (8,4,8)), dict representing non-uniform bitwidths for each layer,
+                                    (for example: `{"layer_1": {"Inputs": 8, "Weights": 4, "Outputs": 8},
+                                    "layer_2": {"Inputs": 5, "Weights": 2, "Outputs": 3}}`)
+                                    Defaults to None.
         threads (str, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or `one`. Defaults to "all".
         heuristic (str, optional): Name of the mapper heuristic to be used. Choices are `exhaustive`, `hybrid`, `linear` or `random`. Defaults to "random".
         metrics (tuple, optional): Tuple of two metrics to be used for the mapper heuristic. Possible values are all six combinations of `energy`, `delay`, `lla`
@@ -168,13 +193,21 @@ class MapperFacade:
     Returns:
         dict: Dictionary containing the best mappings HW parameters and total runtime of the individual workloads timeloop-mapper calls.
     """
-    def run_all_workloads(self, workloads: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: tuple = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True) -> dict:
+    def run_all_workloads(self, workloads: str, batch_size: int = 1, bitwidths: object = None, threads: object = "all", heuristic: str = "random", metrics: tuple = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True) -> dict:
         workloads = glob.glob(f"{workloads}/*.yaml")
         hw_params = {}
 
+
         # Retrieve parameters for each workload
         for i, workload in enumerate(workloads):
-            hw_params[workload.split("/")[-1].split(".")[0]] = self.run_one_workload(workload=workload, batch_size=batch_size, threads=threads, heuristic=heuristic, metrics=metrics, total_valid=total_valid, out_dir=f"{out_dir}/{workload.split('/')[-1].split('.')[0]}", log_all=log_all, verbose=verbose, clean=clean)
+            if bitwidths is None:
+                bitwidth = "native_native_native"
+            elif isinstance(bitwidths, tuple):
+                bitwidth = f"{bitwidths[0]}_{bitwidths[1]}_{bitwidths[2]}"
+            else:
+                key = list(bitwidths.keys())[i]
+                bitwidth = f"{bitwidths[key]["Inputs"]}_{bitwidths[key]["Weights"]}_{bitwidths[key]["Outputs"]}"
+            hw_params[workload.split("/")[-1].split(".")[0]] = self.run_one_workload(workload=workload, batch_size=batch_size, bitwidth=bitwidth, threads=threads, heuristic=heuristic, metrics=metrics, total_valid=total_valid, out_dir=f"{out_dir}/{workload.split('/')[-1].split('.')[0]}", log_all=log_all, verbose=verbose, clean=clean)
             print("Finished workload ", i+1, "/", len(workloads))
 
         # Return dictionary with individual workload's HW params and runtime
@@ -244,7 +277,7 @@ class MapperFacade:
             sys.exit(0)
 
         # Run timeloop-mapper on the created workloads
-        results = self.run_all_workloads(workloads=workloads_location, batch_size=batch_size, threads=threads, heuristic=heuristic, metrics=metrics, total_valid=total_valid, out_dir=out_dir, log_all=log_all, verbose=verbose, clean=clean)
+        results = self.run_all_workloads(workloads=workloads_location, batch_size=batch_size, bitwidths=bitwidths, threads=threads, heuristic=heuristic, metrics=metrics, total_valid=total_valid, out_dir=out_dir, log_all=log_all, verbose=verbose, clean=clean)
         return results
 
     """Method to parse a cnn model and run timeloop-mapper for all workloads (i.e. a CNN network's layers) for given configuration and mapper heuristic settings.
@@ -307,7 +340,7 @@ class MapperFacade:
             sys.exit(0)
 
         # Run timeloop-mapper on the created workloads
-        results = self.run_all_workloads(workloads=workloads_location, batch_size=batch_size, threads=threads, heuristic=heuristic, metrics=metrics, total_valid=total_valid, out_dir=out_dir, log_all=log_all, verbose=verbose, clean=clean)
+        results = self.run_all_workloads(workloads=workloads_location, batch_size=batch_size, bitwidths=bitwidths, threads=threads, heuristic=heuristic, metrics=metrics, total_valid=total_valid, out_dir=out_dir, log_all=log_all, verbose=verbose, clean=clean)
         return results
 
 
