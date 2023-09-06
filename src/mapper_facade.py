@@ -210,7 +210,7 @@ class MapperFacade:
                 bitwidth = f"{bitwidths[0]}_{bitwidths[1]}_{bitwidths[2]}"
             else:
                 key = list(bitwidths.keys())[i]
-                bitwidth = f"{bitwidths[key]["Inputs"]}_{bitwidths[key]["Weights"]}_{bitwidths[key]["Outputs"]}"
+                bitwidth = f"{bitwidths[key]['Inputs']}_{bitwidths[key]['Weights']}_{bitwidths[key]['Outputs']}"
             hw_params[workload.split("/")[-1].split(".")[0]] = self.run_one_workload(workload=workload, batch_size=batch_size, bitwidth=bitwidth, threads=threads, heuristic=heuristic, metrics=metrics, total_valid=total_valid, out_dir=f"{out_dir}/{workload.split('/')[-1].split('.')[0]}", log_all=log_all, verbose=verbose, clean=clean)
             print("Finished workload ", i+1, "/", len(workloads))
 
