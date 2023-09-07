@@ -64,18 +64,16 @@ def main(*, noshow, all, approx, per_channel, symmetric, configurations, act_qua
         colors = ["black", "tab:green", "tab:green", "#31a354", "#006d2c", "#005723", "#00411a", "#00210d"]
         colors_alpha = [1, 0.5, 1, 1, 1, 1, 1, 1]
 
-        fig, axes = plt.subplots(ncols=2, nrows=2, figsize=(8, 5))
-        (ax1, ax2, ax3) = axes
+        fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(8, 5))
+        (ax1) = axes
 
         ax1.set_title(title)
-        ax2.set_title(title)
-        ax3.set_title(title)
 
         if args.en:
-            ax1.set_xlabel("Energy [uJ]")
+            ax1.set_xlabel("EDP [J*cycles]")
             ax1.set_ylabel("Top-1 relative accuracy after partly fine-tuning")
         else:
-            ax1.set_xlabel("Energy [uJ]")
+            ax1.set_xlabel("EDP [J*cycles]")
             ax1.set_ylabel("Top-1 relativní přesnost po částečném dotrénování")
 
         ax1.set_ylim(0, 1.05)
@@ -130,4 +128,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(noshow=args.noshow, all=args.all, approx=args.approx, per_channel=args.per_channel,
-         symmetric=args.symmetric, configurations=args.configurations, act_quant=args.act_quant, en=args.en)
+         symmetric=args.symmetric, configurations=args.configurations, act_quant=args.act_quant, en=True)

@@ -252,13 +252,14 @@ class QATAnalyzer(NSGAAnalyzer):
 
                 # calculate size
                 mapper_facade = MapperFacade()
+                total_valid = 0 if self.timeloop_heuristic == "exhaustive" else 30000
                 hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                           bitwidths=get_config_from_model(
                                                                               quantized_model),
                                                                           input_size="224,224,3", threads=24,
                                                                           heuristic=self.timeloop_heuristic,
                                                                           metrics=("edp", ""), verbose=True,
-                                                                          total_valid=30000)
+                                                                          total_valid=total_valid)
                 total_edp = sum(map(lambda x: x["EDP [J*cycle]"], hardware_params.values()))
                 #total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
 
