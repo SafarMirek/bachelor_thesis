@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import subprocess
 import time
@@ -19,6 +20,33 @@ from construct_workloads.construct_workloads import json_file_to_dict, construct
 def dict_to_json(dictionary, filename):
     with open(filename, 'w') as json_file:
         json.dump(dictionary, json_file)
+
+
+def extract_scalar_accesses_data(data, key):
+    pattern = f"=== {key} ===\s*Total scalar accesses\s*:\s*([\d]+)\s*Op per Byte\s*:\s*([\d.]+)"
+    match = re.search(pattern, data)
+    if match:
+        return {"Total scalar accesses": int(match.group(1)), "Op per Byte": float(match.group(2))}
+    return None
+
+
+def extract_memory_stats(data: str, result_dict: dict) -> dict:
+        # Extract "Word bits"
+        word_bits_pattern = "Word bits\s*:\s*(\d+)"
+        word_bits_match = re.search(word_bits_pattern, data)
+        if word_bits_match:
+            word_bits = int(word_bits_match.group(1))
+            result_dict["Word bits"] = word_bits
+
+        # List of keys to extract data for
+        keys_to_extract = ["psum_spad", "weights_spad", "ifmap_spad", "shared_glb", "DRAM"]
+
+        # Extract data for each key and add it to the result_dict
+        for key in keys_to_extract:
+            extracted_data = extract_scalar_accesses_data(data, key)
+            if extracted_data:
+                result_dict[f"{key} data"] = extracted_data
+        return result_dict
 
 
 class MapperFacade:
@@ -107,14 +135,15 @@ class MapperFacade:
     """
     def run_one_workload(self, workload: str, bitwidth: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: Tuple[str, str] = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True) -> dict:
         mapper = f"{self.configs_path}/mapper_heuristics/mapper.yaml"
+        cache_dir = "timeloop_cache"
 
-        if not os.path.exists("timeloop_cache"):
-            os.makedirs("timeloop_cache")
-        if os.path.exists("timeloop_cache/cache.json"):
-            with open("timeloop_cache/cache.json", "r") as file:
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
+        if os.path.exists(f"{cache_dir}/cache.json"):
+            with open(f"{cache_dir}/cache.json", "r") as file:
                 cache = json.load(file)
         else:
-            cache = {}
+            cache = {}        
 
         layer = workload.split("/")[-1].split(".")[0]
         if layer in cache:
@@ -156,6 +185,12 @@ class MapperFacade:
         with open(f"{tmp_dir}/{self._mode}_{self._thread_id}.stats.csv", "r") as f:
             reader = csv.DictReader(f)
             result_dict = next(reader)
+        
+        # Read the content of the text file to retrieve the total scalar accesses and Op per Byte
+        with open(f"{tmp_dir}/{self._mode}_{self._thread_id}.stats.txt", "r") as f:
+            data = f.read()
+            # Add the total scalar accesses and Op per Byte to the result dictionary
+            result_dict = extract_memory_stats(data, result_dict)
 
         # Deleting the tmp files
         if clean:
@@ -165,8 +200,8 @@ class MapperFacade:
         end_time = time.time()
         runtime = end_time - start_time
 
-        cache[layer][bitwidth] = {"HW": self._architecture, "Workload": layer, "Batch_size": batch_size, "Optimized_metric_1": metrics[0], "Optimized_metric_2": metrics[1], **result_dict, "Runtime [s]": "{:.2f}".format(runtime)}
-        with open("timeloop_cache/cache.json", "w") as file:
+        cache[layer][bitwidth] = {"Mode": self._mode, "HW": self._architecture, "Workload": layer, "Bitwidths": bitwidth, "Batch_size": batch_size, "Mapper heuristic": heuristic, "Total valid": total_valid, "Threads": threads, "Optimized_metric_1": metrics[0], "Optimized_metric_2": metrics[1], **result_dict, "Runtime [s]": "{:.2f}".format(runtime)}
+        with open(f"{cache_dir}/cache.json", "w") as file:
             json.dump(cache, file, indent=2)
 
         # Return dictionary with the best found HW params and total mapper runtime
