@@ -30,7 +30,7 @@ def extract_scalar_accesses_data(data, key):
     return None
 
 
-def extract_memory_stats(data: str, result_dict: dict) -> dict:
+def extract_memory_stats(architecture: str, data: str, result_dict: dict) -> dict:
         # Extract "Word bits"
         word_bits_pattern = "Word bits\s*:\s*(\d+)"
         word_bits_match = re.search(word_bits_pattern, data)
@@ -39,7 +39,10 @@ def extract_memory_stats(data: str, result_dict: dict) -> dict:
             result_dict["Word bits"] = word_bits
 
         # List of keys to extract data for
-        keys_to_extract = ["psum_spad", "weights_spad", "ifmap_spad", "shared_glb", "DRAM"]
+        if "simba" in architecture:
+            keys_to_extract = ["PEWeightRegs", "PEAccuBuffer", "PEWeightBuffer", "PEInputBuffer", "GlobalBuffer", "DRAM"]
+        else: # assume eyeriss
+            keys_to_extract = ["psum_spad", "weights_spad", "ifmap_spad", "shared_glb", "DRAM"]
 
         # Extract data for each key and add it to the result_dict
         for key in keys_to_extract:
@@ -102,10 +105,15 @@ class MapperFacade:
             # Remove the "max-permutations-per-if-visit" if it exists
             mapper_config["mapper"].pop("max-permutations-per-if-visit", None)
         else:
-            mapper_config["mapper"]["victory-condition"] = 500
-            mapper_config["mapper"]["max-permutations-per-if-visit"] = 16
-            mapper_config["mapper"]["timeout"] = 15000
-            
+            if total_valid == 0:
+                mapper_config["mapper"]["victory-condition"] = 500
+                mapper_config["mapper"]["max-permutations-per-if-visit"] = 16
+                mapper_config["mapper"]["timeout"] = 15000
+            else:
+                mapper_config["mapper"].pop("victory-condition", None)
+                mapper_config["mapper"].pop("max-permutations-per-if-visit", None)
+                mapper_config["mapper"].pop("timeout", None)
+
             if heuristic == "random":
                 mapper_config["mapper"]["algorithm"] = "random-pruned"
             elif heuristic == "linear":
@@ -119,7 +127,7 @@ class MapperFacade:
 
     Args:
         workload (str): Relative path to the workload config file.
-        threads (str, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or `one`. Defaults to "all".
+        threads (object, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or integer number. Defaults to "all".
         heuristic (str, optional): Name of the mapper heuristic to be used. Choices are `exhaustive`, `hybrid`, `linear` or `random`. Defaults to "random".
         metrics (tuple, optional): Tuple of two metrics to be used for the mapper heuristic. Possible values are all six combinations of `energy`, `delay`, `lla`
         with an additional seventh option `edp`, leaving the second metric blank. Defaults to ("energy", "delay").
@@ -143,7 +151,7 @@ class MapperFacade:
             with open(f"{cache_dir}/cache.json", "r") as file:
                 cache = json.load(file)
         else:
-            cache = {}        
+            cache = {}
 
         layer = workload.split("/")[-1].split(".")[0]
         if layer in cache:
@@ -190,7 +198,7 @@ class MapperFacade:
         with open(f"{tmp_dir}/{self._mode}_{self._thread_id}.stats.txt", "r") as f:
             data = f.read()
             # Add the total scalar accesses and Op per Byte to the result dictionary
-            result_dict = extract_memory_stats(data, result_dict)
+            result_dict = extract_memory_stats(self._architecture, data, result_dict)
 
         # Deleting the tmp files
         if clean:
@@ -218,7 +226,7 @@ class MapperFacade:
                                     (for example: `{"layer_1": {"Inputs": 8, "Weights": 4, "Outputs": 8},
                                     "layer_2": {"Inputs": 5, "Weights": 2, "Outputs": 3}}`)
                                     Defaults to None.
-        threads (str, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or `one`. Defaults to "all".
+        threads (object, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or integer number. Defaults to "all".
         heuristic (str, optional): Name of the mapper heuristic to be used. Choices are `exhaustive`, `hybrid`, `linear` or `random`. Defaults to "random".
         metrics (tuple, optional): Tuple of two metrics to be used for the mapper heuristic. Possible values are all six combinations of `energy`, `delay`, `lla`
         with an additional seventh option `edp`, leaving the second metric blank. Defaults to ("energy", "delay").
@@ -274,7 +282,7 @@ class MapperFacade:
                                     "layer_2": {"Inputs": 5, "Weights": 2, "Outputs": 3}}`)
                                     Defaults to None.
         input_size (str, optional): Input size of the model. Defaults to "224,224,3".
-        threads (str, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or `one`. Defaults to "all".
+        threads (object, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or integer number. Defaults to "all".
         heuristic (str, optional): Name of the mapper heuristic to be used. Choices are `exhaustive`, `hybrid`, `linear` or `random`. Defaults to "random".
         metrics (tuple, optional): Tuple of two metrics to be used for the mapper heuristic. Possible values are all six combinations of `energy`, `delay`, `lla`
         with an additional seventh option `edp`, leaving the second metric blank. Defaults to ("energy", "delay").
@@ -330,7 +338,7 @@ class MapperFacade:
                                     "layer_2": {"Inputs": 5, "Weights": 2, "Outputs": 3}}`)
                                     Defaults to None.
         input_size (str, optional): Input size of the model. Defaults to "224,224,3".
-        threads (str, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or `one`. Defaults to "all".
+        threads (object, optional): Number of threads to be used by the mapper heuristics. Choices are `all` or integer number. Defaults to "all".
         heuristic (str, optional): Name of the mapper heuristic to be used. Choices are `exhaustive`, `hybrid`, `linear` or `random`. Defaults to "random".
         metrics (tuple, optional): Tuple of two metrics to be used for the mapper heuristic. Possible values are all six combinations of `energy`, `delay`, `lla`
         with an additional seventh option `edp`, leaving the second metric blank. Defaults to ("energy", "delay").
