@@ -81,7 +81,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
 
         if not all_parents:
             pareto_ids = PyBspTreeArchive(2).filter(
-                [(-x["accuracy"], x["edp"]) for x in merged], returnIds=True)
+                [(-x["accuracy"], x["total_edp"]) for x in merged], returnIds=True)
             pareto = [merged[i] for i in pareto_ids]
         else:
             pareto = next_parent
