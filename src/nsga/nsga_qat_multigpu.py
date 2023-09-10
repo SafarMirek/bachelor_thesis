@@ -200,11 +200,11 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             with tf.device(device_name):
                 checkpoints_dir = None
                 if self.checkpoints_dir_pattern is not None:
-                    checkpoints_dir = self.checkpoints_dir_pattern % '_'.join(map(lambda x: str(x), quant_config))
+                    checkpoints_dir = self.checkpoints_dir_pattern % '_'.join(map(lambda x: str(x), quant_config["quant_conf"]))
 
                 logs_dir = None
                 if self.logs_dir_pattern is not None:
-                    logs_dir = self.logs_dir_pattern % '_'.join(map(lambda x: str(x), quant_config))
+                    logs_dir = self.logs_dir_pattern % '_'.join(map(lambda x: str(x), quant_config["quant_conf"]))
 
                 accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
                                                            epochs=self.qat_epochs,
@@ -233,7 +233,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
         try:
             print(f"Quant config {quant_config['quant_conf']} is going to be evaluated on {device.name}")
             with tf.device(device.name):
-                quantized_model = self.quantize_model_by_config(quant_config)
+                quantized_model = self.quantize_model_by_config(quant_config["quant_conf"])
 
                 hardware_params = self._timeloop_pool.submit(self.eval_param, "hardware_params", quantized_model,
                                                              quant_config, device.name)
