@@ -17,7 +17,7 @@ from nsga.nsga_qat_multigpu import MultiGPUQATAnalyzer
 
 def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_wait, learning_rate, warmup,
          mobilenet_path, multigpu, approx, per_channel, symmetric, checkpoints_dir_pattern, logs_dir_pattern,
-         configuration=None, all_parents=False, cache_datasets=False, exhaustive=False):
+         configuration=None, all_parents=False, cache_datasets=False, exhaustive=False, architecture="eyeriss"):
     """
     Evaluates output of NSGA after quantization-aware training
 
@@ -44,6 +44,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
     timeloop_heuristic = "exhaustive" if exhaustive else "random"
     start_time = datetime.datetime.now()
 
+    multigpu = True  # Cache does not work in single gpu mode
+
     if multigpu:
         analyzer = MultiGPUQATAnalyzer(batch_size=batch_size, qat_epochs=qat_epochs, bn_freeze=bn_freeze,
                                        learning_rate=learning_rate, warmup=warmup,
@@ -51,7 +53,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                        approx=approx, per_channel=per_channel, symmetric=symmetric,
                                        logs_dir_pattern=logs_dir_pattern,
                                        checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
-                                       base_model_path=mobilenet_path, timeloop_heuristic=timeloop_heuristic)
+                                       base_model_path=mobilenet_path, timeloop_heuristic=timeloop_heuristic,
+                                       timeloop_architecture=architecture)
     else:
         analyzer = QATAnalyzer(base_model_path=mobilenet_path, batch_size=batch_size, qat_epochs=qat_epochs,
                                bn_freeze=bn_freeze,
@@ -60,7 +63,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                approx=approx, per_channel=per_channel, symmetric=symmetric,
                                logs_dir_pattern=logs_dir_pattern,
                                checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
-                               timeloop_heuristic=timeloop_heuristic)
+                               timeloop_heuristic=timeloop_heuristic, timeloop_architecture=architecture)
 
     if run is None and configuration is None:
         raise ValueError("Configuration for evaluation is missing")
@@ -112,7 +115,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
             "logs_dir_pattern": logs_dir_pattern,
             "checkpoints_dir_pattern": checkpoints_dir_pattern,
             "cache_datasets": cache_datasets,
-            "timeloop_heuristic": timeloop_heuristic
+            "timeloop_heuristic": timeloop_heuristic,
+            "timeloop_architecture": architecture
         }
     }
 
@@ -127,6 +131,13 @@ if __name__ == "__main__":
         prog='nsga_evaluate',
         description='Evaluate results of nsga for qat',
         epilog='')
+
+    parser.add_argument(
+        '--architecture',
+        type=str,
+        default="eyeriss",
+        dest="timeloop_architecture",
+        help='')
 
     parser.add_argument("--output-file", "-o", default=None)
 
@@ -165,4 +176,5 @@ if __name__ == "__main__":
          warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu, approx=args.approx,
          per_channel=args.per_channel, symmetric=args.symmetric, logs_dir_pattern=args.logs_dir_pattern,
          checkpoints_dir_pattern=args.checkpoints_dir_pattern,
-         configuration=args.configuration, all_parents=args.all, cache_datasets=False, exhaustive=args.exhaustive)
+         configuration=args.configuration, all_parents=args.all, cache_datasets=False, exhaustive=args.exhaustive,
+         architecture=args.timeloop_architecture)

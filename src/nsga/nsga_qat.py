@@ -35,7 +35,8 @@ class QATNSGA(NSGA):
 
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
-                 per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random"):
+                 per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random",
+                 timeloop_architecture="eyeriss"):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
                          objectives=[("accuracy", True), ("total_edp", False)],
@@ -51,6 +52,7 @@ class QATNSGA(NSGA):
         self.symmetric = symmetric
         self.learning_rate = learning_rate
         self.timeloop_heuristic = timeloop_heuristic
+        self.timeloop_architecture = timeloop_architecture
         self.quantizable_layers = self.get_analyzer().get_number_of_quantizable_layers()
 
     def get_configuration(self):
@@ -66,6 +68,7 @@ class QATNSGA(NSGA):
             "learning_rate": self.learning_rate,
             "objectives": self.objectives,
             "timeloop_heuristic": self.timeloop_heuristic,
+            "timeloop_architecture": self.timeloop_architecture,
             "base_model": os.path.abspath(self.base_model_path)
         }
 
@@ -78,7 +81,7 @@ class QATNSGA(NSGA):
         return {
             "accuracy": results["accuracy"],
             "total_edp": results["total_edp"],
-            #"total_cycles": results["total_cycles"]
+            # "total_cycles": results["total_cycles"]
         }
 
     def init_analyzer(self) -> NSGAAnalyzer:
@@ -94,7 +97,8 @@ class QATNSGA(NSGA):
                            cache_datasets=self.cache_datasets, approx=self.approx,
                            activation_quant_wait=self.activation_quant_wait, per_channel=self.per_channel,
                            symmetric=self.symmetric, logs_dir_pattern=logs_dir_pattern,
-                           checkpoints_dir_pattern=checkpoints_dir_pattern)
+                           checkpoints_dir_pattern=checkpoints_dir_pattern, timeloop_heuristic=self.timeloop_heuristic,
+                           timeloop_architecture=self.timeloop_architecture)
 
     def get_init_parents(self):
         """
@@ -133,7 +137,8 @@ class QATAnalyzer(NSGAAnalyzer):
 
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
-                 logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="random"):
+                 logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="random",
+                 timeloop_architecture="eyeriss"):
         self.base_model_path = base_model_path
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
@@ -148,6 +153,7 @@ class QATAnalyzer(NSGAAnalyzer):
         self.logs_dir_pattern = logs_dir_pattern
         self.checkpoints_dir_pattern = checkpoints_dir_pattern
         self.timeloop_heuristic = timeloop_heuristic
+        self.timeloop_architecture = timeloop_architecture
         self._mask = None
 
         self.ensure_cache_folder()
@@ -183,8 +189,6 @@ class QATAnalyzer(NSGAAnalyzer):
                 "mobilenet", self.batch_size, self.qat_epochs, self.bn_freeze, self.learning_rate, self.warmup,
                 self.activation_quant_wait, self.approx,
                 self.per_channel, self.symmetric)):
-            if fn == self.cache_file:
-                continue
             print("cache open", fn)
 
             act = json.load(gzip.open(fn))
@@ -205,6 +209,11 @@ class QATAnalyzer(NSGAAnalyzer):
         :param quant_configuration_set: List of configurations for evaluation
         :return: Analyzer list of configurations
         """
+
+        # TODO: Bad cache implementation
+        if True:
+            raise Exception("Use multigpu option")
+
         for node_conf in quant_configuration_set:
             quant_conf = node_conf["quant_conf"]
 
@@ -219,8 +228,8 @@ class QATAnalyzer(NSGAAnalyzer):
             # Get the accuracy
             if len(cache_sel) >= 1:  # Found in cache
                 accuracy = cache_sel[0]["accuracy"]
-                total_edp = cache_sel[0]["total_edp"]
-               #total_cycles = cache_sel[0]["total_cycles"]
+                total_edp = cache_sel[0][f"total_edp_{self.timeloop_architecture}"]
+                # total_cycles = cache_sel[0]["total_cycles"]
                 tf.print("Cache : %s;accuracy=%s;edp=%s;" % (
                     str(quant_conf), accuracy, total_edp))
             else:  # Not found in cache
@@ -251,7 +260,7 @@ class QATAnalyzer(NSGAAnalyzer):
                                                            )
 
                 # calculate size
-                mapper_facade = MapperFacade()
+                mapper_facade = MapperFacade(architecture=self.timeloop_architecture)
                 total_valid = 0 if self.timeloop_heuristic == "exhaustive" else 30000
                 hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                           bitwidths=get_config_from_model(
@@ -261,14 +270,14 @@ class QATAnalyzer(NSGAAnalyzer):
                                                                           metrics=("edp", ""), verbose=True,
                                                                           total_valid=total_valid)
                 total_edp = sum(map(lambda x: x["EDP [J*cycle]"], hardware_params.values()))
-                #total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
+                # total_cycles = sum(map(lambda x: x["Cycles"], hardware_params.values()))
 
             # Create output node
             node = node_conf.copy()
             node["quant_conf"] = quant_conf
             node["accuracy"] = float(accuracy)
             node["total_edp"] = float(total_edp)
-            #node["total_cycles"] = int(total_cycles)
+            # node["total_cycles"] = int(total_cycles)
 
             if len(cache_sel) == 0:  # If the data are not from the cache, cache it
                 self.cache.append(node)

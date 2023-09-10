@@ -5,6 +5,7 @@ import gzip
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 
 import tensorflow as tf
 
@@ -24,10 +25,11 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
 
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
-                 per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random"):
+                 per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random",
+                 timeloop_architecture="eyeriss"):
         super().__init__(logs_dir, base_model_path, parent_size, offspring_size, generations, batch_size, qat_epochs,
                          previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric,
-                         learning_rate, timeloop_heuristic)
+                         learning_rate, timeloop_heuristic, timeloop_architecture)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         # logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
@@ -39,7 +41,8 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
                                    per_channel=self.per_channel, symmetric=self.symmetric,
                                    logs_dir_pattern=logs_dir_pattern,
                                    checkpoints_dir_pattern=checkpoints_dir_pattern,
-                                   base_model_path=self.base_model_path)
+                                   base_model_path=self.base_model_path, timeloop_heuristic=self.timeloop_heuristic,
+                                   timeloop_architecture=self.timeloop_architecture)
 
 
 class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
@@ -55,13 +58,16 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
 
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
-                 logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="random"):
+                 logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="exhaustive",
+                 timeloop_architecture="eyeriss"):
         super().__init__(base_model_path, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, cache_datasets,
                          approx,
                          activation_quant_wait, per_channel, symmetric, logs_dir_pattern, checkpoints_dir_pattern,
-                         timeloop_heuristic)
+                         timeloop_heuristic, timeloop_architecture)
         self._queue = None
         self._timeloop_pool = ThreadPoolExecutor(max_workers=1)
+
+        self._lock = Lock()
 
     @property
     def queue(self):
@@ -71,6 +77,38 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             for device in logical_devices:
                 self._queue.put(device)
         return self._queue
+
+    def update_cache(self, node_to_update):
+        self._lock.acquire()
+
+        self.cache.clear()
+        self.load_cache()
+
+        quant_conf = node_to_update["quant_conf"]
+
+        if not any(x["quant_conf"] == quant_conf for x in self.cache):
+            self.cache.append(node_to_update)
+        else:
+            cached_entry = list(filter(lambda x: x["quant_conf"] == quant_conf, self.cache))[0]
+            for key in node_to_update:
+                if key not in cached_entry:
+                    cached_entry[key] = node_to_update[key]
+
+        json.dump(self.cache, gzip.open(self.cache_file, "wt", encoding="utf8"))
+
+        self._lock.release()
+
+    def read_from_cache(self, quant_config):
+        self._lock.acquire()
+
+        if not any(x["quant_conf"] == quant_config for x in self.cache):
+            node = None
+        else:
+            node = list(filter(lambda x: x["quant_conf"] == quant_config, self.cache))[0]
+
+        self._lock.release()
+
+        return node
 
     def analyze(self, quant_configuration_set):
         """
@@ -86,9 +124,12 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
         for node_conf in quant_configuration_set:
             quant_conf = node_conf["quant_conf"]
 
-            if not any(x["quant_conf"] == quant_conf for x in self.cache):  # not in cache
-                if not any(conf == quant_conf for conf in needs_eval):  # not in needs eval
-                    needs_eval.append(quant_conf)
+            entry = self.read_from_cache(quant_conf)
+
+            if entry is None:
+                entry = {"quant_conf": quant_conf}
+
+            needs_eval.append(entry)
 
         # Run evaluation for all configurations that needs it
         logical_devices = tf.config.list_logical_devices('GPU')
@@ -102,29 +143,22 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = {
                 "quant_conf": quant_conf,
                 "accuracy": float(results[i][0]),
-                "total_edp": float(results[i][1].result()["total_edp"]),
-                #"total_energy": float(results[i][1].result()["total_energy"]),
+                f"total_edp": float(results[i][1].result()[f"total_edp"]),
+                # "total_energy": float(results[i][1].result()["total_energy"]),
             }
-            self.cache.append(node)
-            json.dump(self.cache, gzip.open(self.cache_file, "wt", encoding="utf8"))
+            self.update_cache(node)
 
         for node_conf in quant_configuration_set:
             quant_conf = node_conf["quant_conf"]
 
-            # try to search in cache
-            cache_sel = self.cache.copy()
-
-            # filter data
-            for i in range(len(quant_conf)):
-                cache_sel = filter(lambda x: x["quant_conf"][i] == quant_conf[i], cache_sel)
-                cache_sel = list(cache_sel)
+            cached_entry = self.read_from_cache(quant_conf)
 
             # Get the accuracy
-            if len(cache_sel) >= 1:  # Found in cache
-                accuracy = cache_sel[0]["accuracy"]
-                total_edp = cache_sel[0]["total_edp"]
-                #total_cycles = cache_sel[0]["total_cycles"]
-                tf.print("Cache : %s;accuracy=%s;edp=%s;" % (
+            if cached_entry is not None:  # Found in cache
+                accuracy = cached_entry["accuracy"]
+                total_edp = cached_entry[f"total_edp_{self.timeloop_architecture}"]
+                # total_cycles = cache_sel[0]["total_cycles"]
+                tf.print(f"Cache : %s;accuracy=%s;edp_{self.timeloop_architecture}=%s;" % (
                     str(quant_conf), accuracy, total_edp))
             else:  # Not found in cache
                 raise ValueError("All configurations should be in cache, how has this happends?")
@@ -133,14 +167,18 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = node_conf.copy()
             node["quant_conf"] = quant_conf
             node["accuracy"] = float(accuracy)
-            node["total_edp"] = float(total_edp)
-            #node["total_cycles"] = int(total_cycles)
+            node[f"total_edp"] = float(total_edp)
+            # node["total_cycles"] = int(total_cycles)
 
             yield node
 
     def eval_param(self, eval_param, quantized_model, quant_config, device_name):
         if eval_param == "hardware_params":
-            mapper_facade = MapperFacade()
+            if f"total_edp_{self.timeloop_architecture}" in quant_config:
+                return {
+                    f"total_edp": quant_config[f"total_edp_{self.timeloop_architecture}"]}
+
+            mapper_facade = MapperFacade(architecture=self.timeloop_architecture)
             total_valid = 0 if self.timeloop_heuristic == "exhaustive" else 30000
             hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                       bitwidths=nsga.nsga_qat.get_config_from_model(
@@ -151,11 +189,14 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                                                                       total_valid=total_valid,
                                                                       verbose=True)
             total_edp = sum(map(lambda x: float(x["EDP [J*cycle]"]), hardware_params.values()))
-            #total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
+            # total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
 
-            return {"total_edp": total_edp}
+            return {f"total_edp": total_edp}
 
         elif eval_param == "accuracy":
+            if "accuracy" in quant_config:
+                return quant_config["accuracy"]
+
             with tf.device(device_name):
                 checkpoints_dir = None
                 if self.checkpoints_dir_pattern is not None:
@@ -190,7 +231,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
         """
         device = self.queue.get()
         try:
-            print(f"Quant config {quant_config} is going to be evaluated on {device.name}")
+            print(f"Quant config {quant_config['quant_conf']} is going to be evaluated on {device.name}")
             with tf.device(device.name):
                 quantized_model = self.quantize_model_by_config(quant_config)
 
