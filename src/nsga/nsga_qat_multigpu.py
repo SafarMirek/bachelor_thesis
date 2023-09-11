@@ -143,7 +143,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node = {
                 "quant_conf": quant_conf["quant_conf"],
                 "accuracy": float(results[i][0]),
-                f"total_edp": float(results[i][1].result()[f"total_edp"]),
+                f"total_edp_{self.timeloop_architecture}": float(results[i][1].result()[f"total_edp"]),
                 # "total_energy": float(results[i][1].result()["total_energy"]),
             }
             self.update_cache(node)
