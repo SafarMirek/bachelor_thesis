@@ -141,7 +141,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
 
         for i, quant_conf in enumerate(needs_eval):
             node = {
-                "quant_conf": quant_conf,
+                "quant_conf": quant_conf["quant_conf"],
                 "accuracy": float(results[i][0]),
                 f"total_edp": float(results[i][1].result()[f"total_edp"]),
                 # "total_energy": float(results[i][1].result()["total_energy"]),
@@ -161,7 +161,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                 tf.print(f"Cache : %s;accuracy=%s;edp_{self.timeloop_architecture}=%s;" % (
                     str(quant_conf), accuracy, total_edp))
             else:  # Not found in cache
-                raise ValueError("All configurations should be in cache, how has this happends?")
+                raise ValueError(f"All configurations should be in cache, how has this happends ({quant_conf})")
 
             # Create output node
             node = node_conf.copy()
