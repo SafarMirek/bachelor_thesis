@@ -92,7 +92,10 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             cached_entry = list(filter(lambda x: x["quant_conf"] == quant_conf, self.cache))[0]
             for key in node_to_update:
                 if key not in cached_entry:
+                    print(f"Updating {key} in {cached_entry['quant_conf']} to {node_to_update[key]}")
                     cached_entry[key] = node_to_update[key]
+                else:
+                    print(f"{key} is already in {cached_entry['quant_conf']}")
 
         json.dump(self.cache, gzip.open(self.cache_file, "wt", encoding="utf8"))
 
@@ -200,7 +203,8 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             with tf.device(device_name):
                 checkpoints_dir = None
                 if self.checkpoints_dir_pattern is not None:
-                    checkpoints_dir = self.checkpoints_dir_pattern % '_'.join(map(lambda x: str(x), quant_config["quant_conf"]))
+                    checkpoints_dir = self.checkpoints_dir_pattern % '_'.join(
+                        map(lambda x: str(x), quant_config["quant_conf"]))
 
                 logs_dir = None
                 if self.logs_dir_pattern is not None:
