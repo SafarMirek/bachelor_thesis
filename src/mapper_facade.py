@@ -144,11 +144,12 @@ class MapperFacade:
     def run_one_workload(self, workload: str, bitwidth: str, batch_size: int = 1, threads: object = "all", heuristic: str = "random", metrics: Tuple[str, str] = ("energy", "delay"), total_valid: int = 0, out_dir: str = "tmp_outputs", log_all: bool = False, verbose: bool = False, clean: bool = True) -> dict:
         mapper = f"{self.configs_path}/mapper_heuristics/mapper.yaml"
         cache_dir = "timeloop_cache"
+        cache_name = f"cache_{self._architecture}.json"
 
         if not os.path.exists(cache_dir):
             os.makedirs(cache_dir)
-        if os.path.exists(f"{cache_dir}/cache.json"):
-            with open(f"{cache_dir}/cache.json", "r") as file:
+        if os.path.exists(f"{cache_dir}/{cache_name}"):
+            with open(f"{cache_dir}/{cache_name}", "r") as file:
                 cache = json.load(file)
         else:
             cache = {}
@@ -209,7 +210,7 @@ class MapperFacade:
         runtime = end_time - start_time
 
         cache[layer][bitwidth] = {"Mode": self._mode, "HW": self._architecture, "Workload": layer, "Bitwidths": bitwidth, "Batch_size": batch_size, "Mapper heuristic": heuristic, "Total valid": total_valid, "Threads": threads, "Optimized_metric_1": metrics[0], "Optimized_metric_2": metrics[1], **result_dict, "Runtime [s]": "{:.2f}".format(runtime)}
-        with open(f"{cache_dir}/cache.json", "w") as file:
+        with open(f"{cache_dir}/{cache_name}", "w") as file:
             json.dump(cache, file, indent=2)
 
         # Return dictionary with the best found HW params and total mapper runtime
