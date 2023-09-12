@@ -138,7 +138,7 @@ class QATAnalyzer(NSGAAnalyzer):
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
                  logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="random",
-                 timeloop_architecture="eyeriss"):
+                 timeloop_architecture="eyeriss", include_timeloop_dump=False):
         self.base_model_path = base_model_path
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
@@ -154,6 +154,7 @@ class QATAnalyzer(NSGAAnalyzer):
         self.checkpoints_dir_pattern = checkpoints_dir_pattern
         self.timeloop_heuristic = timeloop_heuristic
         self.timeloop_architecture = timeloop_architecture
+        self.include_timeloop_dump = include_timeloop_dump
         self._mask = None
 
         self.ensure_cache_folder()

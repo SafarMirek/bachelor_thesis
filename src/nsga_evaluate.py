@@ -54,7 +54,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                        logs_dir_pattern=logs_dir_pattern,
                                        checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
                                        base_model_path=mobilenet_path, timeloop_heuristic=timeloop_heuristic,
-                                       timeloop_architecture=architecture)
+                                       timeloop_architecture=architecture, include_timeloop_dump=True)
     else:
         analyzer = QATAnalyzer(base_model_path=mobilenet_path, batch_size=batch_size, qat_epochs=qat_epochs,
                                bn_freeze=bn_freeze,
@@ -63,7 +63,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                approx=approx, per_channel=per_channel, symmetric=symmetric,
                                logs_dir_pattern=logs_dir_pattern,
                                checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
-                               timeloop_heuristic=timeloop_heuristic, timeloop_architecture=architecture)
+                               timeloop_heuristic=timeloop_heuristic, timeloop_architecture=architecture,
+                               include_timeloop_dump=True)
 
     if run is None and configuration is None:
         raise ValueError("Configuration for evaluation is missing")

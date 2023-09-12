@@ -59,11 +59,11 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
                  logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="exhaustive",
-                 timeloop_architecture="eyeriss"):
+                 timeloop_architecture="eyeriss", include_timeloop_dump=False):
         super().__init__(base_model_path, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, cache_datasets,
                          approx,
                          activation_quant_wait, per_channel, symmetric, logs_dir_pattern, checkpoints_dir_pattern,
-                         timeloop_heuristic, timeloop_architecture)
+                         timeloop_heuristic, timeloop_architecture, include_timeloop_dump=include_timeloop_dump)
         self._queue = None
         self._timeloop_pool = ThreadPoolExecutor(max_workers=1)
 
@@ -147,8 +147,14 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                 "quant_conf": quant_conf["quant_conf"],
                 "accuracy": float(results[i][0]),
                 f"total_edp_{self.timeloop_architecture}": float(results[i][1].result()[f"total_edp"]),
-                # "total_energy": float(results[i][1].result()["total_energy"]),
+                f"total_cycles_{self.timeloop_architecture}": int(results[i][1].result()[f"total_cycles"]),
+                f"total_energy_{self.timeloop_architecture}": float(results[i][1].result()[f"total_energy"]),
+                f"total_lastlevelaccesses_{self.timeloop_architecture}": int(
+                    results[i][1].result()[f"total_lastlevelaccesses"]),
             }
+            if self.include_timeloop_dump:
+                node[f"timeloop_dump_{self.timeloop_architecture}"] = results[i][1].result()["timeloop_dump"]
+
             self.update_cache(node)
 
         for node_conf in quant_configuration_set:
@@ -160,6 +166,13 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             if cached_entry is not None:  # Found in cache
                 accuracy = cached_entry["accuracy"]
                 total_edp = cached_entry[f"total_edp_{self.timeloop_architecture}"]
+                total_cycles = cached_entry[f"total_cycles_{self.timeloop_architecture}"]
+                total_energy = cached_entry[f"total_energy_{self.timeloop_architecture}"]
+                total_lastlevelaccesses = cached_entry[f" total_lastlevelaccesses_{self.timeloop_architecture}"]
+                if self.include_timeloop_dump:
+                    timeloop_dump = cached_entry[f"timeloop_dump_{self.timeloop_architecture}"]
+                else:
+                    timeloop_dump = None
                 # total_cycles = cache_sel[0]["total_cycles"]
                 tf.print(f"Cache : %s;accuracy=%s;edp_{self.timeloop_architecture}=%s;" % (
                     str(quant_conf), accuracy, total_edp))
@@ -171,15 +184,34 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
             node["quant_conf"] = quant_conf
             node["accuracy"] = float(accuracy)
             node[f"total_edp"] = float(total_edp)
+            node[f"total_cycles"] = int(total_cycles)
+            node[f"total_energy"] = float(total_energy)
+            node[f"total_lastlevelaccesses"] = int(total_lastlevelaccesses)
+            if self.include_timeloop_dump:
+                node[f"timeloop_dump"] = timeloop_dump
             # node["total_cycles"] = int(total_cycles)
 
             yield node
 
     def eval_param(self, eval_param, quantized_model, quant_config, device_name):
         if eval_param == "hardware_params":
-            if f"total_edp_{self.timeloop_architecture}" in quant_config:
-                return {
-                    f"total_edp": quant_config[f"total_edp_{self.timeloop_architecture}"]}
+            collected_params = [f"total_edp_{self.timeloop_architecture}",
+                                f"total_energy_{self.timeloop_architecture}",
+                                f"total_cycles_{self.timeloop_architecture}",
+                                f"total_lastlevelaccesses_{self.timeloop_architecture}"
+                                ]
+            if all(x in quant_config for x in collected_params) and (
+                    not self.include_timeloop_dump or f"timeloop_dump_{self.timeloop_architecture}" in collected_params
+            ):
+                result = {
+                    f"total_edp": quant_config[f"total_edp_{self.timeloop_architecture}"],
+                    f"total_energy": quant_config[f"total_energy_{self.timeloop_architecture}"],
+                    f"total_cycles": quant_config[f"total_cycles_{self.timeloop_architecture}"],
+                    f"total_lastlevelaccesses": quant_config[f"total_lastlevelaccesses_{self.timeloop_architecture}"]
+                }
+                if self.include_timeloop_dump:
+                    result["timeloop_dump"] = quant_config[f"timeloop_dump_{self.timeloop_architecture}"]
+                return
 
             mapper_facade = MapperFacade(architecture=self.timeloop_architecture)
             total_valid = 0 if self.timeloop_heuristic == "exhaustive" else 30000
@@ -191,10 +223,23 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                                                                       metrics=("edp", ""),
                                                                       total_valid=total_valid,
                                                                       verbose=True)
-            total_edp = sum(map(lambda x: float(x["EDP [J*cycle]"]), hardware_params.values()))
-            # total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
 
-            return {f"total_edp": total_edp}
+            total_edp = sum(map(lambda x: float(x["EDP [J*cycle]"]), hardware_params.values()))
+            total_cycles = sum(map(lambda x: int(x["Cycles"]), hardware_params.values()))
+            total_energy = sum(map(lambda x: float(x["Energy [uJ]"]), hardware_params.values()))
+            total_lastlevelaccesses = sum(map(lambda x: int(x["LastLevelAccesses"]), hardware_params.values()))
+
+            result = {
+                f"total_edp": total_edp,
+                f"total_energy": total_energy,
+                f"total_cycles": total_cycles,
+                f"total_lastlevelaccesses": total_lastlevelaccesses
+            }
+
+            if self.include_timeloop_dump:
+                result["timeloop_dump"] = hardware_params
+
+            return result
 
         elif eval_param == "accuracy":
             if "accuracy" in quant_config:
