@@ -201,6 +201,11 @@ class QATAnalyzer(NSGAAnalyzer):
                 # try to search in cache
                 if not any(filter(lambda x: np.array_equal(x["quant_conf"], conf), self.cache)):
                     self.cache.append(c)
+                else:
+                    cached_entry = list(filter(lambda x: np.array_equal(x["quant_conf"], conf), self.cache))[0]
+                    for key in c:
+                        if key not in cached_entry:
+                            cached_entry[key] = c[key]
 
         tf.print("Cache loaded %d" % (len(self.cache)))
 
