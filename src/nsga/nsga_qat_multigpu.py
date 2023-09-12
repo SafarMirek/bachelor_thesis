@@ -168,7 +168,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                 total_edp = cached_entry[f"total_edp_{self.timeloop_architecture}"]
                 total_cycles = cached_entry[f"total_cycles_{self.timeloop_architecture}"]
                 total_energy = cached_entry[f"total_energy_{self.timeloop_architecture}"]
-                total_lastlevelaccesses = cached_entry[f" total_lastlevelaccesses_{self.timeloop_architecture}"]
+                total_lastlevelaccesses = cached_entry[f"total_lastlevelaccesses_{self.timeloop_architecture}"]
                 if self.include_timeloop_dump:
                     timeloop_dump = cached_entry[f"timeloop_dump_{self.timeloop_architecture}"]
                 else:
