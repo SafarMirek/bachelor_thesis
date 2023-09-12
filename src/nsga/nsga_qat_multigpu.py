@@ -211,7 +211,7 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                 }
                 if self.include_timeloop_dump:
                     result["timeloop_dump"] = quant_config[f"timeloop_dump_{self.timeloop_architecture}"]
-                return
+                return result
 
             mapper_facade = MapperFacade(architecture=self.timeloop_architecture)
             total_valid = 0 if self.timeloop_heuristic == "exhaustive" else 30000
