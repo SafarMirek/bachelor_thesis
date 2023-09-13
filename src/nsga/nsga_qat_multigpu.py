@@ -11,6 +11,7 @@ import tensorflow as tf
 
 import mobilenet_tinyimagenet_qat
 import nsga.nsga_qat
+import resnet_cifar_qat
 from nsga.nsga import NSGAAnalyzer
 
 from queue import Queue
@@ -26,10 +27,10 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
                  per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random",
-                 timeloop_architecture="eyeriss"):
+                 timeloop_architecture="eyeriss", model_name="mobilenet"):
         super().__init__(logs_dir, base_model_path, parent_size, offspring_size, generations, batch_size, qat_epochs,
                          previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric,
-                         learning_rate, timeloop_heuristic, timeloop_architecture)
+                         learning_rate, timeloop_heuristic, timeloop_architecture, model_name)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         # logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
@@ -42,7 +43,7 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
                                    logs_dir_pattern=logs_dir_pattern,
                                    checkpoints_dir_pattern=checkpoints_dir_pattern,
                                    base_model_path=self.base_model_path, timeloop_heuristic=self.timeloop_heuristic,
-                                   timeloop_architecture=self.timeloop_architecture)
+                                   timeloop_architecture=self.timeloop_architecture, model_name=self.model_name)
 
 
 class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
@@ -59,11 +60,12 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
                  logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="exhaustive",
-                 timeloop_architecture="eyeriss", include_timeloop_dump=False):
+                 timeloop_architecture="eyeriss", include_timeloop_dump=False, model_name="mobilenet"):
         super().__init__(base_model_path, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, cache_datasets,
                          approx,
                          activation_quant_wait, per_channel, symmetric, logs_dir_pattern, checkpoints_dir_pattern,
-                         timeloop_heuristic, timeloop_architecture, include_timeloop_dump=include_timeloop_dump)
+                         timeloop_heuristic, timeloop_architecture, include_timeloop_dump=include_timeloop_dump,
+                         model_name=model_name)
         self._queue = None
         self._timeloop_pool = ThreadPoolExecutor(max_workers=1)
 
@@ -215,10 +217,13 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
 
             mapper_facade = MapperFacade(architecture=self.timeloop_architecture)
             total_valid = 0 if self.timeloop_heuristic == "exhaustive" else 30000
+
+            input_size = "32,32,3" if self.model_name == "resnet" else "224,224,3"
+
             hardware_params = mapper_facade.get_hw_params_parse_model(model=self.base_model_path, batch_size=1,
                                                                       bitwidths=nsga.nsga_qat.get_config_from_model(
                                                                           quantized_model),
-                                                                      input_size="224,224,3", threads=24,
+                                                                      input_size=input_size, threads=24,
                                                                       heuristic=self.timeloop_heuristic,
                                                                       metrics=("edp", ""),
                                                                       total_valid=total_valid,
@@ -255,21 +260,38 @@ class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):
                 if self.logs_dir_pattern is not None:
                     logs_dir = self.logs_dir_pattern % '_'.join(map(lambda x: str(x), quant_config["quant_conf"]))
 
-                accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
-                                                           epochs=self.qat_epochs,
-                                                           eval_epochs=50,
-                                                           bn_freeze=self.bn_freeze,
-                                                           batch_size=self.batch_size,
-                                                           learning_rate=self.learning_rate,
-                                                           warmup=self.warmup,
-                                                           checkpoints_dir=checkpoints_dir,
-                                                           logs_dir=logs_dir,
-                                                           cache_dataset=self.cache_datasets,
-                                                           from_checkpoint=None,
-                                                           verbose=False,
-                                                           activation_quant_wait=self.activation_quant_wait,
-                                                           save_best_only=True
-                                                           )
+                if self.model_name == "mobilenet":
+                    accuracy = mobilenet_tinyimagenet_qat.main(q_aware_model=quantized_model,
+                                                               epochs=self.qat_epochs,
+                                                               eval_epochs=50,
+                                                               bn_freeze=self.bn_freeze,
+                                                               batch_size=self.batch_size,
+                                                               learning_rate=self.learning_rate,
+                                                               warmup=self.warmup,
+                                                               checkpoints_dir=checkpoints_dir,
+                                                               logs_dir=logs_dir,
+                                                               cache_dataset=self.cache_datasets,
+                                                               from_checkpoint=None,
+                                                               verbose=False,
+                                                               activation_quant_wait=self.activation_quant_wait,
+                                                               save_best_only=True
+                                                               )
+                elif self.model_name == "resnet":
+                    accuracy = resnet_cifar_qat.main(q_aware_model=quantized_model,
+                                                     epochs=self.qat_epochs,
+                                                     bn_freeze=self.bn_freeze,
+                                                     batch_size=self.batch_size,
+                                                     learning_rate=self.learning_rate,
+                                                     checkpoints_dir=checkpoints_dir,
+                                                     logs_dir=logs_dir,
+                                                     cache_dataset=self.cache_datasets,
+                                                     from_checkpoint=None,
+                                                     verbose=False,
+                                                     activation_quant_wait=self.activation_quant_wait,
+                                                     save_best_only=True
+                                                     )
+                else:
+                    accuracy = 0
                 return accuracy
 
     def get_eval_of_config(self, quant_config):

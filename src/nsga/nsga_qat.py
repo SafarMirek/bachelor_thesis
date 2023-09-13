@@ -36,7 +36,7 @@ class QATNSGA(NSGA):
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
                  per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random",
-                 timeloop_architecture="eyeriss"):
+                 timeloop_architecture="eyeriss", model_name="mobilenet"):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
                          objectives=[("accuracy", True), ("total_edp", False)],
@@ -53,6 +53,7 @@ class QATNSGA(NSGA):
         self.learning_rate = learning_rate
         self.timeloop_heuristic = timeloop_heuristic
         self.timeloop_architecture = timeloop_architecture
+        self.model_name = model_name
         self.quantizable_layers = self.get_analyzer().get_number_of_quantizable_layers()
 
     def get_configuration(self):
@@ -69,7 +70,8 @@ class QATNSGA(NSGA):
             "objectives": self.objectives,
             "timeloop_heuristic": self.timeloop_heuristic,
             "timeloop_architecture": self.timeloop_architecture,
-            "base_model": os.path.abspath(self.base_model_path)
+            "base_model": os.path.abspath(self.base_model_path),
+            "model_name": self.model_name
         }
 
     def get_maximal(self):
@@ -98,7 +100,7 @@ class QATNSGA(NSGA):
                            activation_quant_wait=self.activation_quant_wait, per_channel=self.per_channel,
                            symmetric=self.symmetric, logs_dir_pattern=logs_dir_pattern,
                            checkpoints_dir_pattern=checkpoints_dir_pattern, timeloop_heuristic=self.timeloop_heuristic,
-                           timeloop_architecture=self.timeloop_architecture)
+                           timeloop_architecture=self.timeloop_architecture, model_name=self.model_name)
 
     def get_init_parents(self):
         """
@@ -122,7 +124,7 @@ class QATNSGA(NSGA):
 
         if random.random() < 0.1:  # 10 % probability of mutation
             li = random.choice([x for x in range(self.quantizable_layers)])
-            child_conf[li] = random.choice([2, 3, 4, 5, 6, 7, 8])
+            child_conf[li] = random.choice([3, 4, 5, 6, 7, 8])
 
         return {"quant_conf": child_conf}
 
@@ -138,7 +140,7 @@ class QATAnalyzer(NSGAAnalyzer):
     def __init__(self, base_model_path, batch_size=64, qat_epochs=10, bn_freeze=25, learning_rate=0.05, warmup=0.0,
                  cache_datasets=False, approx=False, activation_quant_wait=0, per_channel=True, symmetric=True,
                  logs_dir_pattern=None, checkpoints_dir_pattern=None, timeloop_heuristic="random",
-                 timeloop_architecture="eyeriss", include_timeloop_dump=False):
+                 timeloop_architecture="eyeriss", include_timeloop_dump=False, model_name="mobilenet"):
         self.base_model_path = base_model_path
         self.batch_size = batch_size
         self.qat_epochs = qat_epochs
@@ -155,6 +157,7 @@ class QATAnalyzer(NSGAAnalyzer):
         self.timeloop_heuristic = timeloop_heuristic
         self.timeloop_architecture = timeloop_architecture
         self.include_timeloop_dump = include_timeloop_dump
+        self.model_name = model_name
         self._mask = None
 
         self.ensure_cache_folder()
@@ -163,7 +166,7 @@ class QATAnalyzer(NSGAAnalyzer):
         i = 0
         while True:
             self.cache_file = "cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_%s_%d.json.gz" % (
-                "mobilenet", batch_size, qat_epochs, bn_freeze, learning_rate, warmup, activation_quant_wait, approx,
+                self.model_name, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, activation_quant_wait, approx,
                 per_channel, symmetric, timeloop_heuristic,
                 i)
             if not os.path.isfile(self.cache_file):
@@ -187,7 +190,7 @@ class QATAnalyzer(NSGAAnalyzer):
         Loads all already evaluated individuals from cache files to local cache
         """
         for fn in glob.glob("cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_*.json.gz" % (
-                "mobilenet", self.batch_size, self.qat_epochs, self.bn_freeze, self.learning_rate, self.warmup,
+                self.model_name, self.batch_size, self.qat_epochs, self.bn_freeze, self.learning_rate, self.warmup,
                 self.activation_quant_wait, self.approx,
                 self.per_channel, self.symmetric)):
             print("cache open", fn)
