@@ -71,11 +71,12 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
         self._output_quantizer_vars = None
         if quantize_outputs:
-            self._output_quantizer = DisableableMovingAverageQuantizer(
+            self.output_quantizer = DisableableMovingAverageQuantizer(
                 num_bits=quantize_num_bits_output, per_axis=False,
                 symmetric=False, narrow_range=False, min_initializer=keras.initializers.Constant(-6.0),
                 max_initializer=keras.initializers.Constant(6.0), no_affect=False)
-            self._output_quantizer = None
+        else:
+            self.output_quantizer = None
 
     def build(self, input_shape):
         """
@@ -169,8 +170,8 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
         self._build_quantizer_weights()
 
-        if self._output_quantizer:
-            self._output_quantizer_vars = self._output_quantizer.build(
+        if self.output_quantizer is not None:
+            self._output_quantizer_vars = self.output_quantizer.build(
                 self.layer.compute_output_shape(input_shape), 'output', self)
 
         self.built = True
@@ -198,7 +199,9 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
             "quantize": self.quantize,
             "quantize_num_bits_weight": self.quantize_num_bits_weight,
             "per_channel": self.per_channel,
-            "symmetric": self.symmetric
+            "symmetric": self.symmetric,
+            "quantize_outputs": self.quantize_outputs,
+            "quantize_num_bits_output": self.quantize_num_bits_output
         }
         return dict(list(base_config.items()) + list(config.items()))
 
@@ -314,10 +317,10 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
         return folded_weights
 
     def _apply_outputs_quantizer_if_defined(self, *, training, outputs):
-        if self._output_quantizer is None:
+        if self.output_quantizer is None:
             return outputs
 
-        return self._make_quantizer_fn(self._output_quantizer, outputs, training,
+        return self._make_quantizer_fn(self.output_quantizer, outputs, training,
                                        self._output_quantizer_vars)
 
     def call(self, inputs, training=None, **kwargs):
