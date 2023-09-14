@@ -1,5 +1,5 @@
 from keras import layers
-from keras.layers import Dense
+from keras.layers import Dense, ReLU
 from keras.layers import Conv2D
 from keras.layers import AveragePooling2D
 from keras.layers import Flatten
@@ -25,7 +25,7 @@ def conv2d_bn(x, filters, kernel_size, weight_decay=.0, strides=(1, 1)):
 
 def conv2d_bn_relu(x, filters, kernel_size, weight_decay=.0, strides=(1, 1)):
     layer = conv2d_bn(x, filters, kernel_size, weight_decay, strides)
-    layer = Activation('relu')(layer)
+    layer = ReLU()(layer)
     return layer
 
 
@@ -50,7 +50,7 @@ def ResidualBlock(x, filters, kernel_size, weight_decay, downsample=True):
                          strides=1,
                          )
     out = layers.add([residual_x, residual])
-    out = Activation('relu')(out)
+    out = ReLU()(out)
     return out
 
 

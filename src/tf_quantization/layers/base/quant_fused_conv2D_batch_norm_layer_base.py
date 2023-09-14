@@ -20,7 +20,7 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
                  bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize, quantize_num_bits_weight,
-                 per_channel, symmetric, **kwargs):
+                 per_channel, symmetric, quantize_outputs, quantize_num_bits_output, **kwargs):
         super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
                          data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
                          kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
@@ -45,7 +45,9 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
         self.beta_constraint = constraints.get(beta_constraint)
         self.gamma_constraint = constraints.get(gamma_constraint)
         self.quantize = quantize
+        self.quantize_outputs = quantize_outputs
         self.quantize_num_bits_weight = quantize_num_bits_weight
+        self.quantize_num_bits_output = quantize_num_bits_output
 
         # Added param that allows batch norm freezing at the end of training
         self.frozen_bn = False
@@ -64,6 +66,14 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
             )
         else:
             self.weights_quantizer = None
+
+        self._output_quantizer_vars = None
+        if quantize_outputs:
+            self._output_quantizer = quantizers.MovingAverageQuantizer(
+                num_bits=quantize_num_bits_output, per_axis=False,
+                symmetric=False, narrow_range=False)
+        else:
+            self._output_quantizer = None
 
     def build(self, input_shape):
         """
@@ -156,6 +166,10 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
                 self._scope.set_partitioner(partitioner)
 
         self._build_quantizer_weights()
+
+        if self._output_quantizer:
+            self._output_quantizer_vars = self._output_quantizer.build(
+                self.layer.compute_output_shape(input_shape), 'output', self)
 
         self.built = True
 
@@ -296,6 +310,13 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
             folded_weights = self.weights_quantizer.__call__(folded_weights, training,
                                                              weights=self._quantizer_weights)
         return folded_weights
+
+    def _apply_outputs_quantizer_if_defined(self, *, training, outputs):
+        if self._output_quantizer is None:
+            return outputs
+
+        return self._make_quantizer_fn(self._output_quantizer, outputs, training,
+                                       self._output_quantizer_vars)
 
     def call(self, inputs, training=None, **kwargs):
         input_shape = inputs.shape

@@ -101,6 +101,7 @@ class PerLayerQuantizeModelTransformer:
             default_n_bit_transforms.DenseBatchNormActivationQuantize(),
             custom_n_bit_quantize_layout_transform.Conv2DBatchNormReluQuantize(),
             custom_n_bit_quantize_layout_transform.DepthwiseConv2DBatchNormReluQuantize(),
+            custom_n_bit_quantize_layout_transform.Conv2DBatchNormQuantize(),
         ]
 
         self._nodes = [layer["config"]["name"] for layer in self._config["layers"]]

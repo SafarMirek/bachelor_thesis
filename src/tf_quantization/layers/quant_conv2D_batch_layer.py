@@ -20,7 +20,7 @@ class QuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormalization
                  bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize, quantize_num_bits_weight,
-                 per_channel, symmetric, **kwargs):
+                 per_channel, symmetric, quantize_outputs=False, quantize_num_bits_output=8, **kwargs):
         super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
                          data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
                          kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
@@ -33,7 +33,8 @@ class QuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormalization
                          gamma_regularizer=gamma_regularizer, beta_constraint=beta_constraint,
                          gamma_constraint=gamma_constraint, quantize=quantize,
                          quantize_num_bits_weight=quantize_num_bits_weight,
-                         per_channel=per_channel, symmetric=symmetric, **kwargs)
+                         per_channel=per_channel, symmetric=symmetric, quantize_outputs=quantize_outputs,
+                         quantize_num_bits_output=quantize_num_bits_output, **kwargs)
 
         if per_channel:
             raise ValueError("This scheme supports only per layer quantization")
@@ -60,7 +61,7 @@ class QuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormalization
             out_shape = self.compute_output_shape(input_shape)
             outputs.set_shape(out_shape)
 
-        return outputs
+        return self._apply_outputs_quantizer_if_defined(outputs=outputs, training=training)
 
     def _call_with_bn(self, inputs, input_shape, training):
         """
@@ -129,4 +130,4 @@ class QuantFusedConv2DBatchNormalizationLayer(QuantFusedConv2DBatchNormalization
 
         outputs = self._add_folded_bias(outputs, self.bias if self.use_bias else [0], batch_mean, batch_std_dev)
 
-        return outputs
+        return self._apply_outputs_quantizer_if_defined(outputs=outputs, training=training)
