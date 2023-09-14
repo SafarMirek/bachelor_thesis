@@ -75,7 +75,7 @@ def main(*, q_aware_model, epochs, bn_freeze=10e1000, batch_size=128, learning_r
     ])
 
     def augment(x):
-       with tf.device("/cpu:0"):  # TODO: Remove for final version, this fixes problem with tensorflow-metal
+        with tf.device("/cpu:0"):  # TODO: Remove for final version, this fixes problem with tensorflow-metal
             out = data_augmentation(x, training=True)
             return out
 
@@ -207,6 +207,12 @@ def _set_act_quant_no_affect(model, value):
             if hasattr(layer.quantize_config, "activation_quantizer"):
                 if hasattr(layer.quantize_config.activation_quantizer, "no_affect"):
                     layer.quantize_config.activation_quantizer.no_affect = value
+
+        if isinstance(layer, QuantFusedConv2DBatchNormalizationLayer) or isinstance(layer,
+                                                                                    ApproxQuantFusedConv2DBatchNormalizationLayer):
+            if hasattr(layer, "output_quantizer"):
+                if hasattr(layer.output_quantizer, "no_affect"):
+                    layer.output_quantizer.no_affect = value
 
 
 if __name__ == "__main__":

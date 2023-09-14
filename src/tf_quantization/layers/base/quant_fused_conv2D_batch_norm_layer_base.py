@@ -4,7 +4,7 @@ import abc
 
 import tensorflow as tf
 from keras import initializers, regularizers, constraints, backend
-from keras.utils import tf_utils
+from keras.utils import tf_utils, control_flow_util
 from tensorflow import keras
 from tensorflow_model_optimization.python.core.quantization.keras import quantizers
 
@@ -172,7 +172,7 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
         if self.output_quantizer is not None:
             self._output_quantizer_vars = self.output_quantizer.build(
-                self.layer.compute_output_shape(input_shape), 'output', self)
+                self.compute_output_shape(input_shape), 'output', self)
 
         self.built = True
 
@@ -320,8 +320,18 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
         if self.output_quantizer is None:
             return outputs
 
-        return self._make_quantizer_fn(self.output_quantizer, outputs, training,
-                                       self._output_quantizer_vars)
+        return control_flow_util.smart_cond(
+            training, self._make_quantizer_fn(self.output_quantizer, outputs, True, self._output_quantizer_vars),
+            self._make_quantizer_fn(self.output_quantizer, outputs, False, self._output_quantizer_vars)
+        )
+
+    def _make_quantizer_fn(self, quantizer, x, training, quantizer_vars):
+        """Use currying to return True/False specialized fns to the cond."""
+
+        def quantizer_fn():
+            return quantizer(x, training, weights=quantizer_vars)
+
+        return quantizer_fn
 
     def call(self, inputs, training=None, **kwargs):
         input_shape = inputs.shape
