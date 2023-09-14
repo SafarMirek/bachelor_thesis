@@ -36,7 +36,7 @@ class QATNSGA(NSGA):
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
                  per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random",
-                 timeloop_architecture="eyeriss", model_name="mobilenet"):
+                 timeloop_architecture="eyeriss", model_name="mobilenet", bn_freeze=25):
         super().__init__(logs_dir=logs_dir,
                          parent_size=parent_size, offspring_size=offspring_size, generations=generations,
                          objectives=[("accuracy", True), ("total_edp", False)],
@@ -54,6 +54,7 @@ class QATNSGA(NSGA):
         self.timeloop_heuristic = timeloop_heuristic
         self.timeloop_architecture = timeloop_architecture
         self.model_name = model_name
+        self.bn_freeze = bn_freeze
         self.quantizable_layers = self.get_analyzer().get_number_of_quantizable_layers()
 
     def get_configuration(self):
@@ -71,7 +72,8 @@ class QATNSGA(NSGA):
             "timeloop_heuristic": self.timeloop_heuristic,
             "timeloop_architecture": self.timeloop_architecture,
             "base_model": os.path.abspath(self.base_model_path),
-            "model_name": self.model_name
+            "model_name": self.model_name,
+            "bn_freeze": self.bn_freeze
         }
 
     def get_maximal(self):
@@ -100,7 +102,8 @@ class QATNSGA(NSGA):
                            activation_quant_wait=self.activation_quant_wait, per_channel=self.per_channel,
                            symmetric=self.symmetric, logs_dir_pattern=logs_dir_pattern,
                            checkpoints_dir_pattern=checkpoints_dir_pattern, timeloop_heuristic=self.timeloop_heuristic,
-                           timeloop_architecture=self.timeloop_architecture, model_name=self.model_name)
+                           timeloop_architecture=self.timeloop_architecture, model_name=self.model_name,
+                           bn_freeze=self.bn_freeze)
 
     def get_init_parents(self):
         """
@@ -166,7 +169,8 @@ class QATAnalyzer(NSGAAnalyzer):
         i = 0
         while True:
             self.cache_file = "cache/%s_%d_%d_%d_%.5f_%.2f_%d_%r_%r_%r_%s_%d.json.gz" % (
-                self.model_name, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, activation_quant_wait, approx,
+                self.model_name, batch_size, qat_epochs, bn_freeze, learning_rate, warmup, activation_quant_wait,
+                approx,
                 per_channel, symmetric, timeloop_heuristic,
                 i)
             if not os.path.isfile(self.cache_file):

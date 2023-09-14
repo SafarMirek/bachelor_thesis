@@ -27,10 +27,10 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
     def __init__(self, logs_dir, base_model_path, parent_size=50, offspring_size=50, generations=25, batch_size=128,
                  qat_epochs=10, previous_run=None, cache_datasets=False, approx=False, activation_quant_wait=0,
                  per_channel=True, symmetric=True, learning_rate=0.2, timeloop_heuristic="random",
-                 timeloop_architecture="eyeriss", model_name="mobilenet"):
+                 timeloop_architecture="eyeriss", model_name="mobilenet", bn_freeze=25):
         super().__init__(logs_dir, base_model_path, parent_size, offspring_size, generations, batch_size, qat_epochs,
                          previous_run, cache_datasets, approx, activation_quant_wait, per_channel, symmetric,
-                         learning_rate, timeloop_heuristic, timeloop_architecture, model_name)
+                         learning_rate, timeloop_heuristic, timeloop_architecture, model_name, bn_freeze)
 
     def init_analyzer(self) -> NSGAAnalyzer:
         # logs_dir_pattern = os.path.join(self.logs_dir, "logs/%s")
@@ -43,7 +43,8 @@ class MultiGPUQATNSGA(nsga.nsga_qat.QATNSGA):
                                    logs_dir_pattern=logs_dir_pattern,
                                    checkpoints_dir_pattern=checkpoints_dir_pattern,
                                    base_model_path=self.base_model_path, timeloop_heuristic=self.timeloop_heuristic,
-                                   timeloop_architecture=self.timeloop_architecture, model_name=self.model_name)
+                                   timeloop_architecture=self.timeloop_architecture, model_name=self.model_name,
+                                   bn_freeze=self.bn_freeze)
 
 
 class MultiGPUQATAnalyzer(nsga.nsga_qat.QATAnalyzer):

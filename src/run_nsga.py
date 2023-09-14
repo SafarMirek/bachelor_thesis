@@ -121,6 +121,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--learning-rate', '--lr', default=0.2, type=float)
 
+    parser.add_argument('--bn-freeze', default=40, type=int)
+
     parser.add_argument(
         '--generations',
         type=int,

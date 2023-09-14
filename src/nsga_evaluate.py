@@ -16,7 +16,8 @@ from nsga.nsga_qat_multigpu import MultiGPUQATAnalyzer
 
 
 def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_wait, learning_rate, warmup,
-         mobilenet_path, multigpu, approx, per_channel, symmetric, checkpoints_dir_pattern, logs_dir_pattern,
+         mobilenet_path, model_name, multigpu, approx, per_channel, symmetric, checkpoints_dir_pattern,
+         logs_dir_pattern,
          configuration=None, all_parents=False, cache_datasets=False, exhaustive=False, architecture="eyeriss"):
     """
     Evaluates output of NSGA after quantization-aware training
@@ -54,7 +55,8 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                        logs_dir_pattern=logs_dir_pattern,
                                        checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
                                        base_model_path=mobilenet_path, timeloop_heuristic=timeloop_heuristic,
-                                       timeloop_architecture=architecture, include_timeloop_dump=True)
+                                       timeloop_architecture=architecture, include_timeloop_dump=True,
+                                       model_name=model_name)
     else:
         analyzer = QATAnalyzer(base_model_path=mobilenet_path, batch_size=batch_size, qat_epochs=qat_epochs,
                                bn_freeze=bn_freeze,
@@ -64,7 +66,7 @@ def main(output_file, run, batch_size, qat_epochs, bn_freeze, activation_quant_w
                                logs_dir_pattern=logs_dir_pattern,
                                checkpoints_dir_pattern=checkpoints_dir_pattern, cache_datasets=cache_datasets,
                                timeloop_heuristic=timeloop_heuristic, timeloop_architecture=architecture,
-                               include_timeloop_dump=True)
+                               include_timeloop_dump=True, model_name=model_name)
 
     if run is None and configuration is None:
         raise ValueError("Configuration for evaluation is missing")
@@ -155,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument('--warmup', default=0.05, type=float)
 
     parser.add_argument('--multigpu', default=False, action='store_true')
-    parser.add_argument('--mobilenet-path', default="mobilenet_tinyimagenet_025.keras", type=str)
+    parser.add_argument('--base-model-path', default="mobilenet_tinyimagenet_025.keras", type=str)
 
     parser.add_argument('--approx', default=False, action='store_true')
     parser.add_argument('--per-channel', default=False, action='store_true')
@@ -166,6 +168,13 @@ if __name__ == "__main__":
     parser.add_argument("--logs-dir-pattern", default="logs/mobilenet/%s")
     parser.add_argument("--checkpoints-dir-pattern", default="checkpoints/mobilenet/%s")
 
+    parser.add_argument(
+        '--model-name',
+        type=str,
+        default="mobilenet",
+        dest="model_name",
+        help='')
+
     # There is an error while using cache during evaluation
     # parser.add_argument('--cache', default=False, action='store_true')
 
@@ -174,7 +183,8 @@ if __name__ == "__main__":
     main(output_file=args.output_file,
          run=args.run, batch_size=args.batch_size, qat_epochs=args.epochs,
          bn_freeze=args.bn_freeze, activation_quant_wait=args.act_quant_wait, learning_rate=args.learning_rate,
-         warmup=args.warmup, mobilenet_path=args.mobilenet_path, multigpu=args.multigpu, approx=args.approx,
+         warmup=args.warmup, mobilenet_path=args.base_model_path, model_name=args.model_name, multigpu=args.multigpu,
+         approx=args.approx,
          per_channel=args.per_channel, symmetric=args.symmetric, logs_dir_pattern=args.logs_dir_pattern,
          checkpoints_dir_pattern=args.checkpoints_dir_pattern,
          configuration=args.configuration, all_parents=args.all, cache_datasets=False, exhaustive=args.exhaustive,
