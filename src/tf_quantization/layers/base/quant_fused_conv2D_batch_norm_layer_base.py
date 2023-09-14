@@ -8,6 +8,8 @@ from keras.utils import tf_utils
 from tensorflow import keras
 from tensorflow_model_optimization.python.core.quantization.keras import quantizers
 
+from tf_quantization.quantize_registry import DisableableMovingAverageQuantizer
+
 
 class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
     """
@@ -69,10 +71,10 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
         self._output_quantizer_vars = None
         if quantize_outputs:
-            self._output_quantizer = quantizers.MovingAverageQuantizer(
+            self._output_quantizer = DisableableMovingAverageQuantizer(
                 num_bits=quantize_num_bits_output, per_axis=False,
-                symmetric=False, narrow_range=False)
-        else:
+                symmetric=False, narrow_range=False, min_initializer=keras.initializers.Constant(-6.0),
+                max_initializer=keras.initializers.Constant(6.0), no_affect=False)
             self._output_quantizer = None
 
     def build(self, input_shape):
