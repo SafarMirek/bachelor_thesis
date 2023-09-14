@@ -39,9 +39,9 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
         tr_ds = tr_ds.cache()
 
     data_augmentation = tf.keras.Sequential([
-        keras.layers.RandomFlip(HORIZONTAL),
-        keras.layers.RandomTranslation(height_factor=4/32, width_factor=4/32),
-        keras.layers.RandomRotation(0.1),
+        keras.layers.RandomFlip(HORIZONTAL, seed=30082000),
+        keras.layers.RandomTranslation(height_factor=4 / 32, width_factor=4 / 32, seed=30082000),
+        keras.layers.RandomRotation(0.1, seed=30082000),
     ])
 
     def augment(x):
@@ -50,7 +50,7 @@ def main(*, epochs, batch_size, learning_rate, logs_dir, checkpoints_dir, from_c
             return out
 
     train_ds = tr_ds.map(lambda data: (data['image'], data['label']))
-    train_ds = train_ds.shuffle(int(0.5 * len(train_ds)), reshuffle_each_iteration=True) \
+    train_ds = train_ds.shuffle(int(0.5 * len(train_ds)), reshuffle_each_iteration=True, seed=30082000) \
         .map(lambda x, y: (augment(x), y)) \
         .batch(batch_size) \
         .prefetch(100)
