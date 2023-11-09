@@ -1,0 +1,8 @@
+mapper:
+  optimization-metrics: [ last-level-accesses, energy ]
+  log-oaves: True
+  live-status: False
+  timeout: 15000
+  victory-condition: 500
+  algorithm: hybrid
+  max-permutations-per-if-visit: 16

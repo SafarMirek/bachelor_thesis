@@ -4,9 +4,11 @@ import abc
 
 import tensorflow as tf
 from keras import initializers, regularizers, constraints, backend
-from keras.utils import tf_utils
+from keras.utils import tf_utils, control_flow_util
 from tensorflow import keras
 from tensorflow_model_optimization.python.core.quantization.keras import quantizers
+
+from tf_quantization.quantize_registry import DisableableMovingAverageQuantizer
 
 
 class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
@@ -20,7 +22,7 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
                  bias_constraint, axis, momentum, epsilon, center, scale, beta_initializer,
                  gamma_initializer, moving_mean_initializer, moving_variance_initializer, beta_regularizer,
                  gamma_regularizer, beta_constraint, gamma_constraint, quantize, quantize_num_bits_weight,
-                 per_channel, symmetric, **kwargs):
+                 per_channel, symmetric, quantize_outputs, quantize_num_bits_output, **kwargs):
         super().__init__(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
                          data_format=data_format, dilation_rate=dilation_rate, groups=groups, use_bias=use_bias,
                          kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
@@ -45,7 +47,9 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
         self.beta_constraint = constraints.get(beta_constraint)
         self.gamma_constraint = constraints.get(gamma_constraint)
         self.quantize = quantize
+        self.quantize_outputs = quantize_outputs
         self.quantize_num_bits_weight = quantize_num_bits_weight
+        self.quantize_num_bits_output = quantize_num_bits_output
 
         # Added param that allows batch norm freezing at the end of training
         self.frozen_bn = False
@@ -64,6 +68,15 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
             )
         else:
             self.weights_quantizer = None
+
+        self._output_quantizer_vars = None
+        if quantize_outputs:
+            self.output_quantizer = DisableableMovingAverageQuantizer(
+                num_bits=quantize_num_bits_output, per_axis=False,
+                symmetric=False, narrow_range=False, min_initializer=keras.initializers.Constant(-6.0),
+                max_initializer=keras.initializers.Constant(6.0), no_affect=False)
+        else:
+            self.output_quantizer = None
 
     def build(self, input_shape):
         """
@@ -157,6 +170,10 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
 
         self._build_quantizer_weights()
 
+        if self.output_quantizer is not None:
+            self._output_quantizer_vars = self.output_quantizer.build(
+                self.compute_output_shape(input_shape), 'output', self)
+
         self.built = True
 
     def get_config(self):
@@ -182,7 +199,9 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
             "quantize": self.quantize,
             "quantize_num_bits_weight": self.quantize_num_bits_weight,
             "per_channel": self.per_channel,
-            "symmetric": self.symmetric
+            "symmetric": self.symmetric,
+            "quantize_outputs": self.quantize_outputs,
+            "quantize_num_bits_output": self.quantize_num_bits_output
         }
         return dict(list(base_config.items()) + list(config.items()))
 
@@ -296,6 +315,23 @@ class QuantFusedConv2DBatchNormalizationLayerBase(keras.layers.Conv2D):
             folded_weights = self.weights_quantizer.__call__(folded_weights, training,
                                                              weights=self._quantizer_weights)
         return folded_weights
+
+    def _apply_outputs_quantizer_if_defined(self, *, training, outputs):
+        if self.output_quantizer is None:
+            return outputs
+
+        return control_flow_util.smart_cond(
+            training, self._make_quantizer_fn(self.output_quantizer, outputs, True, self._output_quantizer_vars),
+            self._make_quantizer_fn(self.output_quantizer, outputs, False, self._output_quantizer_vars)
+        )
+
+    def _make_quantizer_fn(self, quantizer, x, training, quantizer_vars):
+        """Use currying to return True/False specialized fns to the cond."""
+
+        def quantizer_fn():
+            return quantizer(x, training, weights=quantizer_vars)
+
+        return quantizer_fn
 
     def call(self, inputs, training=None, **kwargs):
         input_shape = inputs.shape

@@ -49,7 +49,7 @@ def main(*, noshow, all, approx, per_channel, symmetric, configurations, act_qua
     for configuration in configurations:
         title = configuration["title_en"] if en else configuration["title"]
         runs_folder = configuration["run_folder"]
-        memory_8bit_ref = configuration["base_memory"]
+        #memory_8bit_ref = configuration["base_memory"]
         ref_accuracy = configuration["float_accuracy"]
         alldata = {}
 
@@ -57,7 +57,7 @@ def main(*, noshow, all, approx, per_channel, symmetric, configurations, act_qua
             gen = int(re.match(r".*run\.(\d+)\.json\.gz", fn).group(1))
             alldata[gen] = json.load(gzip.open(fn))
             for record in alldata[gen]["parent"] + alldata[gen]["offspring"]:
-                record["memory_percent"] = record["memory"] / memory_8bit_ref
+            #    record["memory_percent"] = record["memory"] / memory_8bit_ref
                 record["accuracy_percent"] = record["accuracy"] / ref_accuracy
 
         selected_generations = [1] + configuration["generations"]
@@ -70,27 +70,27 @@ def main(*, noshow, all, approx, per_channel, symmetric, configurations, act_qua
         ax1.set_title(title)
 
         if args.en:
-            ax1.set_xlabel("Size of weights in comparison to 8bit model [%]")
-            ax1.set_ylabel("Top-1 relative accuracy after partly fine-tuning [%]")
+            ax1.set_xlabel("EDP [J*cycles]")
+            ax1.set_ylabel("Top-1 relative accuracy after partly fine-tuning")
         else:
-            ax1.set_xlabel("Velikost vah v porovnání s 8-bitovým modelem [%]")
-            ax1.set_ylabel("Top-1 relativní přesnost po částečném dotrénování [%]")
+            ax1.set_xlabel("EDP [J*cycles]")
+            ax1.set_ylabel("Top-1 relativní přesnost po částečném dotrénování")
 
         ax1.set_ylim(0, 1.05)
-        ax1.set_xlim(0, 1)
+        #ax1.set_xlim(0, 700000)
 
-        ax1.xaxis.set_major_formatter(FuncFormatter(percent))
+        #ax1.xaxis.set_major_formatter(FuncFormatter(percent))
         ax1.yaxis.set_major_formatter(FuncFormatter(percent))
 
         for i, generation in enumerate(selected_generations):
             color = colors[i]
             color_alpha = colors_alpha[i]
             data = alldata[generation]["parent"]
-            data = apply_pareto_filter(data)
+            data = apply_pareto_filter(data, sort_by="total_edp")
 
             label = "Best configurations" if en else "Nejlepší konfigurace"
 
-            ax1.step([x["memory_percent"] for x in data], [x["accuracy_percent"] for x in data], color=color,
+            ax1.step([x["total_edp"] for x in data], [x["accuracy_percent"] for x in data], color=color,
                      label=f"{label} ({generation}. gen)", where="post", marker="x" if i == 0 else "o", markersize=4,
                      linewidth=0.5,
                      linestyle=":", alpha=color_alpha)
@@ -128,4 +128,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(noshow=args.noshow, all=args.all, approx=args.approx, per_channel=args.per_channel,
-         symmetric=args.symmetric, configurations=args.configurations, act_quant=args.act_quant, en=args.en)
+         symmetric=args.symmetric, configurations=args.configurations, act_quant=args.act_quant, en=True)

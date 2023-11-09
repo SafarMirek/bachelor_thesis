@@ -1,0 +1,7 @@
+mapper:
+  optimization-metrics: [ delay, last-level-accesses ]
+  log-oaves: True
+  live-status: False
+  algorithm: linear-pruned
+  victory-condition: 0
+  timeout: 0

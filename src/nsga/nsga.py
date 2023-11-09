@@ -2,6 +2,7 @@
 # Author: Miroslav Safar (xsafar23@stud.fit.vutbr.cz)
 
 import abc
+import datetime
 import glob
 import gzip
 import json
@@ -143,6 +144,9 @@ class NSGA(abc.ABC):
 
         self.ensure_logs_dir()
 
+        if previous_run is None:
+            self._check_if_empty()
+
     def _restore_state(self, previous_run):
         """
         Restores state from previous run
@@ -166,6 +170,25 @@ class NSGA(abc.ABC):
         except FileExistsError:
             pass  # Folder already exists no need to create it
 
+    def _check_if_empty(self):
+        files = os.listdir(self.logs_dir)
+        if len(files) > 0:
+            print("ERROR: Folder for new run is not empty")
+            exit(1)
+
+    def _generate_run_information(self):
+        print("Generation configuration information to " + os.path.abspath(self.logs_dir + "/configuration.json"))
+        run_info = {
+            "start_time": datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'),
+            "configuration": self.get_configuration()
+        }
+        with open(self.logs_dir + "/configuration.json", "w") as outfile:
+            json.dump(run_info, outfile)
+
+    @abc.abstractmethod
+    def get_configuration(self):
+        pass
+
     def get_pareto_front(self, values):
         """
         Returns pareto front from values
@@ -176,7 +199,7 @@ class NSGA(abc.ABC):
         def map_obj_list(value):
             return [value[obj[0]] * (-1 if obj[1] else 1) for obj in self.objectives]
 
-        pareto_ids = PyBspTreeArchive(2).filter([map_obj_list(x) for x in values],
+        pareto_ids = PyBspTreeArchive(len(self.objectives)).filter([map_obj_list(x) for x in values],
                                                 returnIds=True)
 
         return pareto_ids
@@ -230,6 +253,8 @@ class NSGA(abc.ABC):
         Runs specified number of generations
         """
         if self.state is None:
+            self._generate_run_information()
+
             parents = self.get_init_parents()
             next_parents = list(self.get_analyzer().analyze(parents))
             self.state = NSGAState(generation=0, parents=next_parents, offsprings=[])

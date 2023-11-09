@@ -77,6 +77,13 @@ class CustomNBitQuantizeLayoutTransform(quantize_layout_transform.QuantizeLayout
                 symmetric=self._symmetric,
                 per_channel=self._per_channel
             ),
+            Conv2DBatchNormQuantize(
+                num_bits_weight=self._num_bits_weight,
+                num_bits_activation=self._num_bits_activation,
+                approx=self._approx,
+                symmetric=self._symmetric,
+                per_channel=self._per_channel
+            ),
             default_n_bit_transforms.InputLayerQuantize(
                 num_bits_weight=self._num_bits_weight,
                 num_bits_activation=self._num_bits_activation),
@@ -275,6 +282,139 @@ class Conv2DBatchNormReluQuantize(transforms.Transform):
         conv_layer_node = bn_layer_node.input_layers[0]
 
         return self._replace(relu_layer_node, bn_layer_node, conv_layer_node)
+
+
+class Conv2DBatchNormQuantize(transforms.Transform):
+    """
+    Transformation that replaces Conv2D + BN + ReLU with (Approx)QuantFusedConv2DBatchNormalizationLayer + ReLU
+
+    This ensures batch normalization is handled properly if per-tensor weight quantization is used
+    """
+
+    def __init__(self, num_bits_weight: int = 8, num_bits_activation: int = 8, approx: bool = False,
+                 symmetric: bool = True, per_channel: bool = True):
+        self.num_bits_weight = num_bits_weight
+        self.num_bits_activation = num_bits_activation
+        self.approx = approx
+        self.symmetric = symmetric
+        self.per_channel = per_channel
+
+    def pattern(self):
+        return LayerPattern(
+            'BatchNormalization',
+            inputs=[LayerPattern('Conv2D')])
+
+    def _replace(self, bn_layer_node, conv_layer_node):
+        if _has_custom_quantize_config(bn_layer_node, conv_layer_node):
+            return bn_layer_node
+
+        if self.approx:
+            conv_bn_layer = ApproxQuantFusedConv2DBatchNormalizationLayer(
+                name=conv_layer_node.layer['config']['name'] + "_bnfolded",
+                filters=conv_layer_node.layer['config']['filters'],
+                kernel_size=conv_layer_node.layer['config']['kernel_size'],
+                strides=conv_layer_node.layer['config']['strides'],
+                padding=conv_layer_node.layer['config']['padding'],
+                data_format=conv_layer_node.layer['config']['data_format'],
+                dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
+                groups=conv_layer_node.layer['config']['groups'],
+                use_bias=conv_layer_node.layer['config']['use_bias'],
+                kernel_initializer=conv_layer_node.layer['config']['kernel_initializer'],
+                bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
+                kernel_regularizer=conv_layer_node.layer['config']['kernel_regularizer'],
+                bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
+                kernel_constraint=conv_layer_node.layer['config']['kernel_constraint'],
+                bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
+                axis=bn_layer_node.layer['config']['axis'],
+                momentum=bn_layer_node.layer['config']['momentum'],
+                epsilon=bn_layer_node.layer['config']['epsilon'],
+                center=bn_layer_node.layer['config']['center'],
+                scale=bn_layer_node.layer['config']['scale'],
+                beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
+                gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
+                moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
+                moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
+                beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
+                gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
+                beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
+                gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
+                quantize=True,
+                quantize_num_bits_weight=self.num_bits_weight,
+                symmetric=self.symmetric,
+                per_channel=self.per_channel,
+                quantize_outputs=True,
+                quantize_num_bits_output=self.num_bits_activation
+
+            )
+        else:
+            conv_bn_layer = QuantFusedConv2DBatchNormalizationLayer(
+                name=conv_layer_node.layer['config']['name'] + "_bnfolded",
+                filters=conv_layer_node.layer['config']['filters'],
+                kernel_size=conv_layer_node.layer['config']['kernel_size'],
+                strides=conv_layer_node.layer['config']['strides'],
+                padding=conv_layer_node.layer['config']['padding'],
+                data_format=conv_layer_node.layer['config']['data_format'],
+                dilation_rate=conv_layer_node.layer['config']['dilation_rate'],
+                groups=conv_layer_node.layer['config']['groups'],
+                use_bias=conv_layer_node.layer['config']['use_bias'],
+                kernel_initializer=conv_layer_node.layer['config']['kernel_initializer'],
+                bias_initializer=conv_layer_node.layer['config']['bias_initializer'],
+                kernel_regularizer=conv_layer_node.layer['config']['kernel_regularizer'],
+                bias_regularizer=conv_layer_node.layer['config']['bias_regularizer'],
+                kernel_constraint=conv_layer_node.layer['config']['kernel_constraint'],
+                bias_constraint=conv_layer_node.layer['config']['bias_constraint'],
+                axis=bn_layer_node.layer['config']['axis'],
+                momentum=bn_layer_node.layer['config']['momentum'],
+                epsilon=bn_layer_node.layer['config']['epsilon'],
+                center=bn_layer_node.layer['config']['center'],
+                scale=bn_layer_node.layer['config']['scale'],
+                beta_initializer=bn_layer_node.layer['config']['beta_initializer'],
+                gamma_initializer=bn_layer_node.layer['config']['gamma_initializer'],
+                moving_mean_initializer=bn_layer_node.layer['config']['moving_mean_initializer'],
+                moving_variance_initializer=bn_layer_node.layer['config']['moving_variance_initializer'],
+                beta_regularizer=bn_layer_node.layer['config']['beta_regularizer'],
+                gamma_regularizer=bn_layer_node.layer['config']['gamma_regularizer'],
+                beta_constraint=bn_layer_node.layer['config']['beta_constraint'],
+                gamma_constraint=bn_layer_node.layer['config']['gamma_constraint'],
+                quantize=True,
+                quantize_num_bits_weight=self.num_bits_weight,
+                symmetric=self.symmetric,
+                per_channel=self.per_channel,
+                quantize_outputs=True,
+                quantize_num_bits_output=self.num_bits_activation
+            )
+
+        conv_bn_layer_config = keras.layers.serialize(conv_bn_layer)
+        conv_bn_layer_config['name'] = conv_bn_layer.name
+
+        conv_layer_weights = conv_layer_node.weights
+        bn_layer_weights = bn_layer_node.weights
+        conv_bn_layer_weights = collections.OrderedDict()
+        conv_bn_layer_weights['kernel:0'] = conv_layer_weights['kernel:0']
+        if conv_bn_layer.use_bias:
+            conv_bn_layer_weights['bias:0'] = conv_layer_weights['bias:0']
+
+        if conv_bn_layer.scale:
+            conv_bn_layer_weights['gamma:0'] = bn_layer_weights['gamma:0']
+
+        if conv_bn_layer.center:
+            conv_bn_layer_weights['beta:0'] = bn_layer_weights['beta:0']
+
+        conv_bn_layer_weights['moving_mean:0'] = bn_layer_weights['moving_mean:0']
+        conv_bn_layer_weights['moving_variance:0'] = bn_layer_weights['moving_variance:0']
+
+        return LayerNode(
+            conv_bn_layer_config,
+            weights=conv_bn_layer_weights,
+            input_layers=conv_layer_node.input_layers,
+            metadata={}
+        )
+
+    def replacement(self, match_layer):
+        bn_layer_node = match_layer
+        conv_layer_node = bn_layer_node.input_layers[0]
+
+        return self._replace(bn_layer_node, conv_layer_node)
 
 
 class DepthwiseConv2DBatchNormReluQuantize(transforms.Transform):
